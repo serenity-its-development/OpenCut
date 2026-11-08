@@ -4,7 +4,7 @@ import { existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
-const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "src");
 const pick = (base) => {
 	for (const p of [base, `${base}.ts`, join(base, "index.ts")]) if (existsSync(p) && statSync(p).isFile()) return p;
 	return null;

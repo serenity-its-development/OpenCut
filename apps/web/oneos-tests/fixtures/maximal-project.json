@@ -1,0 +1,1568 @@
+{
+	"project": {
+		"metadata": {
+			"id": "p1",
+			"name": "Trip",
+			"thumbnail": "data:image/png;base64,AAAA",
+			"duration": 1200000,
+			"createdAt": "2026-11-08T00:00:00.000Z",
+			"updatedAt": "2026-11-08T02:00:00.000Z"
+		},
+		"scenes": [
+			{
+				"id": "s1",
+				"name": "Main",
+				"isMain": true,
+				"createdAt": "2026-11-08T00:00:00.000Z",
+				"updatedAt": "2026-11-08T01:00:00.000Z",
+				"bookmarks": [
+					{
+						"time": 240000,
+						"note": "Cut here",
+						"color": "#ff0000",
+						"duration": 120000
+					},
+					{
+						"time": 1080000
+					}
+				],
+				"tracks": {
+					"main": {
+						"id": "s1-main",
+						"name": "Main",
+						"type": "video",
+						"muted": false,
+						"hidden": false,
+						"elements": [
+							{
+								"type": "video",
+								"mediaId": "m-video",
+								"name": "Beach",
+								"duration": 600000,
+								"startTime": 0,
+								"trimStart": 120000,
+								"trimEnd": 240000,
+								"sourceDuration": 960000,
+								"muted": false,
+								"isSourceAudioEnabled": true,
+								"hidden": false,
+								"transform": {
+									"scaleX": 1.25,
+									"scaleY": 1.25,
+									"position": {
+										"x": 12,
+										"y": -4
+									},
+									"rotate": 7.5
+								},
+								"opacity": 0.9,
+								"blendMode": "screen",
+								"volume": 0.7,
+								"id": "v1",
+								"retime": {
+									"rate": 1.5,
+									"maintainPitch": true
+								},
+								"effects": [
+									{
+										"id": "id-001",
+										"type": "blur",
+										"params": {
+											"intensity": 15
+										},
+										"enabled": true
+									}
+								],
+								"masks": [
+									{
+										"type": "split",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0
+										},
+										"id": "id-002"
+									},
+									{
+										"type": "cinematic-bars",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 1.1473474844178637,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-003"
+									},
+									{
+										"type": "rectangle",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-004"
+									},
+									{
+										"type": "ellipse",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-005"
+									},
+									{
+										"type": "heart",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-006"
+									},
+									{
+										"type": "diamond",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-007"
+									},
+									{
+										"type": "star",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-008"
+									},
+									{
+										"type": "text",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"content": "Mask",
+											"fontSize": 15,
+											"fontFamily": "Arial",
+											"fontWeight": "normal",
+											"fontStyle": "normal",
+											"textDecoration": "none",
+											"letterSpacing": 0,
+											"lineHeight": 1.2,
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-009"
+									},
+									{
+										"type": "custom",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"path": [],
+											"closed": false,
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-010"
+									}
+								],
+								"animations": {
+									"bindings": {
+										"opacity": {
+											"path": "opacity",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "opacity:value"
+												}
+											]
+										},
+										"transform.positionX": {
+											"path": "transform.positionX",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "transform.positionX:value"
+												}
+											]
+										},
+										"volume": {
+											"path": "volume",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "volume:value"
+												}
+											]
+										},
+										"effects.id-001.params.intensity": {
+											"path": "effects.id-001.params.intensity",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "effects.id-001.params.intensity:value"
+												}
+											]
+										}
+									},
+									"channels": {
+										"opacity:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-011",
+													"time": 0,
+													"value": 0,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												},
+												{
+													"id": "id-012",
+													"time": 120000,
+													"value": 1,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"transform.positionX:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-013",
+													"time": 240000,
+													"value": 40,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"volume:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-014",
+													"time": 360000,
+													"value": 0.2,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"effects.id-001.params.intensity:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-015",
+													"time": 120000,
+													"value": 40,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										}
+									}
+								}
+							},
+							{
+								"type": "image",
+								"mediaId": "m-image",
+								"name": "Logo",
+								"duration": 360000,
+								"startTime": 840000,
+								"trimStart": 0,
+								"trimEnd": 0,
+								"hidden": false,
+								"transform": {
+									"scaleX": 1,
+									"scaleY": 1,
+									"position": {
+										"x": 0,
+										"y": 0
+									},
+									"rotate": 0
+								},
+								"opacity": 1,
+								"blendMode": "normal",
+								"id": "i1"
+							}
+						]
+					},
+					"overlay": [
+						{
+							"id": "s1-text",
+							"name": "Titles",
+							"type": "text",
+							"hidden": false,
+							"elements": [
+								{
+									"type": "text",
+									"name": "Title",
+									"content": "Hello 日本語",
+									"duration": 240000,
+									"startTime": 120000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"fontSize": 64,
+									"fontFamily": "Inter",
+									"color": "#ffffff",
+									"background": {
+										"enabled": true,
+										"color": "#00000080",
+										"cornerRadius": 8,
+										"paddingX": 4,
+										"paddingY": 2,
+										"offsetX": 0,
+										"offsetY": 0
+									},
+									"textAlign": "center",
+									"fontWeight": "bold",
+									"fontStyle": "italic",
+									"textDecoration": "underline",
+									"letterSpacing": 1,
+									"lineHeight": 1.2,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "t1",
+									"effects": [
+										{
+											"id": "id-016",
+											"type": "blur",
+											"params": {
+												"intensity": 15
+											},
+											"enabled": true
+										}
+									],
+									"animations": {
+										"bindings": {
+											"opacity": {
+												"path": "opacity",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "opacity:value"
+													}
+												]
+											},
+											"color": {
+												"path": "color",
+												"kind": "color",
+												"colorSpace": "srgb-linear",
+												"components": [
+													{
+														"key": "r",
+														"channelId": "color:r"
+													},
+													{
+														"key": "g",
+														"channelId": "color:g"
+													},
+													{
+														"key": "b",
+														"channelId": "color:b"
+													},
+													{
+														"key": "a",
+														"channelId": "color:a"
+													}
+												]
+											}
+										},
+										"channels": {
+											"opacity:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-017",
+														"time": 0,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:r": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-018",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:g": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-018",
+														"time": 120000,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:b": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-018",
+														"time": 120000,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:a": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-018",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											}
+										}
+									}
+								}
+							]
+						},
+						{
+							"id": "s1-gfx",
+							"name": "Graphics",
+							"type": "graphic",
+							"hidden": true,
+							"elements": [
+								{
+									"type": "sticker",
+									"name": "Star",
+									"stickerId": "shapes:star",
+									"duration": 120000,
+									"startTime": 0,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 0.5,
+									"blendMode": "normal",
+									"id": "g1"
+								},
+								{
+									"type": "graphic",
+									"name": "Rectangle",
+									"definitionId": "rectangle",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"cornerRadius": 0
+									},
+									"duration": 240000,
+									"startTime": 240000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g2",
+									"animations": {
+										"bindings": {
+											"params.strokeWidth": {
+												"path": "params.strokeWidth",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "params.strokeWidth:value"
+													}
+												]
+											}
+										},
+										"channels": {
+											"params.strokeWidth:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-019",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											}
+										}
+									},
+									"masks": [
+										{
+											"type": "ellipse",
+											"params": {
+												"feather": 0,
+												"inverted": false,
+												"strokeColor": "#ffffff",
+												"strokeWidth": 0,
+												"strokeAlign": "center",
+												"centerX": 0,
+												"centerY": 0,
+												"width": 0.6,
+												"height": 0.6,
+												"rotation": 0,
+												"scale": 1
+											},
+											"id": "id-020"
+										}
+									]
+								},
+								{
+									"type": "graphic",
+									"name": "Ellipse",
+									"definitionId": "ellipse",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center"
+									},
+									"duration": 240000,
+									"startTime": 480000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g3"
+								},
+								{
+									"type": "graphic",
+									"name": "Polygon",
+									"definitionId": "polygon",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"sides": 5,
+										"cornerRadius": 0
+									},
+									"duration": 240000,
+									"startTime": 720000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g4"
+								},
+								{
+									"type": "graphic",
+									"name": "Star",
+									"definitionId": "star",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"points": 5,
+										"depth": 45
+									},
+									"duration": 240000,
+									"startTime": 960000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g5"
+								}
+							]
+						},
+						{
+							"id": "s1-fx",
+							"name": "Adjust",
+							"type": "effect",
+							"hidden": false,
+							"elements": [
+								{
+									"type": "effect",
+									"name": "Grade",
+									"effectType": "blur",
+									"params": {
+										"intensity": 15
+									},
+									"duration": 1200000,
+									"startTime": 0,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"id": "e1"
+								}
+							]
+						}
+					],
+					"audio": [
+						{
+							"id": "s1-a1",
+							"name": "Music",
+							"type": "audio",
+							"muted": true,
+							"elements": [
+								{
+									"type": "audio",
+									"sourceType": "upload",
+									"mediaId": "m-audio",
+									"name": "Song",
+									"duration": 1080000,
+									"startTime": 60000,
+									"trimStart": 360000,
+									"trimEnd": 0,
+									"sourceDuration": 21600000,
+									"volume": 0.4,
+									"muted": false,
+									"id": "a1",
+									"retime": {
+										"rate": 0.9
+									}
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"id": "s2",
+				"name": "B-roll",
+				"isMain": false,
+				"createdAt": "2026-11-08T00:00:00.000Z",
+				"updatedAt": "2026-11-08T01:00:00.000Z",
+				"bookmarks": [
+					{
+						"time": 240000,
+						"note": "Cut here",
+						"color": "#ff0000",
+						"duration": 120000
+					},
+					{
+						"time": 1080000
+					}
+				],
+				"tracks": {
+					"main": {
+						"id": "s2-main",
+						"name": "Main",
+						"type": "video",
+						"muted": false,
+						"hidden": false,
+						"elements": [
+							{
+								"type": "video",
+								"mediaId": "m-video",
+								"name": "Beach",
+								"duration": 600000,
+								"startTime": 0,
+								"trimStart": 120000,
+								"trimEnd": 240000,
+								"sourceDuration": 960000,
+								"muted": false,
+								"isSourceAudioEnabled": true,
+								"hidden": false,
+								"transform": {
+									"scaleX": 1.25,
+									"scaleY": 1.25,
+									"position": {
+										"x": 12,
+										"y": -4
+									},
+									"rotate": 7.5
+								},
+								"opacity": 0.9,
+								"blendMode": "screen",
+								"volume": 0.7,
+								"id": "v1",
+								"retime": {
+									"rate": 1.5,
+									"maintainPitch": true
+								},
+								"effects": [
+									{
+										"id": "id-021",
+										"type": "blur",
+										"params": {
+											"intensity": 15
+										},
+										"enabled": true
+									}
+								],
+								"masks": [
+									{
+										"type": "split",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0
+										},
+										"id": "id-022"
+									},
+									{
+										"type": "cinematic-bars",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 1.1473474844178637,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-023"
+									},
+									{
+										"type": "rectangle",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-024"
+									},
+									{
+										"type": "ellipse",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-025"
+									},
+									{
+										"type": "heart",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-026"
+									},
+									{
+										"type": "diamond",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-027"
+									},
+									{
+										"type": "star",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"centerX": 0,
+											"centerY": 0,
+											"width": 0.3375,
+											"height": 0.6,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-028"
+									},
+									{
+										"type": "text",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"content": "Mask",
+											"fontSize": 15,
+											"fontFamily": "Arial",
+											"fontWeight": "normal",
+											"fontStyle": "normal",
+											"textDecoration": "none",
+											"letterSpacing": 0,
+											"lineHeight": 1.2,
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-029"
+									},
+									{
+										"type": "custom",
+										"params": {
+											"feather": 0,
+											"inverted": false,
+											"strokeColor": "#ffffff",
+											"strokeWidth": 0,
+											"strokeAlign": "center",
+											"path": [],
+											"closed": false,
+											"centerX": 0,
+											"centerY": 0,
+											"rotation": 0,
+											"scale": 1
+										},
+										"id": "id-030"
+									}
+								],
+								"animations": {
+									"bindings": {
+										"opacity": {
+											"path": "opacity",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "opacity:value"
+												}
+											]
+										},
+										"transform.positionX": {
+											"path": "transform.positionX",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "transform.positionX:value"
+												}
+											]
+										},
+										"volume": {
+											"path": "volume",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "volume:value"
+												}
+											]
+										},
+										"effects.id-021.params.intensity": {
+											"path": "effects.id-021.params.intensity",
+											"kind": "number",
+											"components": [
+												{
+													"key": "value",
+													"channelId": "effects.id-021.params.intensity:value"
+												}
+											]
+										}
+									},
+									"channels": {
+										"opacity:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-031",
+													"time": 0,
+													"value": 0,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												},
+												{
+													"id": "id-032",
+													"time": 120000,
+													"value": 1,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"transform.positionX:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-033",
+													"time": 240000,
+													"value": 40,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"volume:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-034",
+													"time": 360000,
+													"value": 0.2,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										},
+										"effects.id-021.params.intensity:value": {
+											"kind": "scalar",
+											"keys": [
+												{
+													"id": "id-035",
+													"time": 120000,
+													"value": 40,
+													"segmentToNext": "linear",
+													"tangentMode": "flat"
+												}
+											]
+										}
+									}
+								}
+							},
+							{
+								"type": "image",
+								"mediaId": "m-image",
+								"name": "Logo",
+								"duration": 360000,
+								"startTime": 840000,
+								"trimStart": 0,
+								"trimEnd": 0,
+								"hidden": false,
+								"transform": {
+									"scaleX": 1,
+									"scaleY": 1,
+									"position": {
+										"x": 0,
+										"y": 0
+									},
+									"rotate": 0
+								},
+								"opacity": 1,
+								"blendMode": "normal",
+								"id": "i1"
+							}
+						]
+					},
+					"overlay": [
+						{
+							"id": "s2-text",
+							"name": "Titles",
+							"type": "text",
+							"hidden": false,
+							"elements": [
+								{
+									"type": "text",
+									"name": "Title",
+									"content": "Hello 日本語",
+									"duration": 240000,
+									"startTime": 120000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"fontSize": 64,
+									"fontFamily": "Inter",
+									"color": "#ffffff",
+									"background": {
+										"enabled": true,
+										"color": "#00000080",
+										"cornerRadius": 8,
+										"paddingX": 4,
+										"paddingY": 2,
+										"offsetX": 0,
+										"offsetY": 0
+									},
+									"textAlign": "center",
+									"fontWeight": "bold",
+									"fontStyle": "italic",
+									"textDecoration": "underline",
+									"letterSpacing": 1,
+									"lineHeight": 1.2,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "t1",
+									"effects": [
+										{
+											"id": "id-036",
+											"type": "blur",
+											"params": {
+												"intensity": 15
+											},
+											"enabled": true
+										}
+									],
+									"animations": {
+										"bindings": {
+											"opacity": {
+												"path": "opacity",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "opacity:value"
+													}
+												]
+											},
+											"color": {
+												"path": "color",
+												"kind": "color",
+												"colorSpace": "srgb-linear",
+												"components": [
+													{
+														"key": "r",
+														"channelId": "color:r"
+													},
+													{
+														"key": "g",
+														"channelId": "color:g"
+													},
+													{
+														"key": "b",
+														"channelId": "color:b"
+													},
+													{
+														"key": "a",
+														"channelId": "color:a"
+													}
+												]
+											}
+										},
+										"channels": {
+											"opacity:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-037",
+														"time": 0,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:r": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-038",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:g": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-038",
+														"time": 120000,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:b": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-038",
+														"time": 120000,
+														"value": 0,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"color:a": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-038",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											}
+										}
+									}
+								}
+							]
+						},
+						{
+							"id": "s2-gfx",
+							"name": "Graphics",
+							"type": "graphic",
+							"hidden": true,
+							"elements": [
+								{
+									"type": "sticker",
+									"name": "Star",
+									"stickerId": "shapes:star",
+									"duration": 120000,
+									"startTime": 0,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 0.5,
+									"blendMode": "normal",
+									"id": "g1"
+								},
+								{
+									"type": "graphic",
+									"name": "Rectangle",
+									"definitionId": "rectangle",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"cornerRadius": 0
+									},
+									"duration": 240000,
+									"startTime": 240000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g2",
+									"animations": {
+										"bindings": {
+											"params.strokeWidth": {
+												"path": "params.strokeWidth",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "params.strokeWidth:value"
+													}
+												]
+											}
+										},
+										"channels": {
+											"params.strokeWidth:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-039",
+														"time": 120000,
+														"value": 1,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											}
+										}
+									},
+									"masks": [
+										{
+											"type": "ellipse",
+											"params": {
+												"feather": 0,
+												"inverted": false,
+												"strokeColor": "#ffffff",
+												"strokeWidth": 0,
+												"strokeAlign": "center",
+												"centerX": 0,
+												"centerY": 0,
+												"width": 0.6,
+												"height": 0.6,
+												"rotation": 0,
+												"scale": 1
+											},
+											"id": "id-040"
+										}
+									]
+								},
+								{
+									"type": "graphic",
+									"name": "Ellipse",
+									"definitionId": "ellipse",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center"
+									},
+									"duration": 240000,
+									"startTime": 480000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g3"
+								},
+								{
+									"type": "graphic",
+									"name": "Polygon",
+									"definitionId": "polygon",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"sides": 5,
+										"cornerRadius": 0
+									},
+									"duration": 240000,
+									"startTime": 720000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g4"
+								},
+								{
+									"type": "graphic",
+									"name": "Star",
+									"definitionId": "star",
+									"params": {
+										"fill": "#ffffff",
+										"stroke": "#000000",
+										"strokeWidth": 0,
+										"strokeAlign": "center",
+										"points": 5,
+										"depth": 45
+									},
+									"duration": 240000,
+									"startTime": 960000,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"transform": {
+										"scaleX": 1.25,
+										"scaleY": 1.25,
+										"position": {
+											"x": 12,
+											"y": -4
+										},
+										"rotate": 7.5
+									},
+									"opacity": 1,
+									"blendMode": "normal",
+									"id": "g5"
+								}
+							]
+						},
+						{
+							"id": "s2-fx",
+							"name": "Adjust",
+							"type": "effect",
+							"hidden": false,
+							"elements": [
+								{
+									"type": "effect",
+									"name": "Grade",
+									"effectType": "blur",
+									"params": {
+										"intensity": 15
+									},
+									"duration": 1200000,
+									"startTime": 0,
+									"trimStart": 0,
+									"trimEnd": 0,
+									"id": "e1"
+								}
+							]
+						}
+					],
+					"audio": [
+						{
+							"id": "s2-a1",
+							"name": "Music",
+							"type": "audio",
+							"muted": true,
+							"elements": [
+								{
+									"type": "audio",
+									"sourceType": "upload",
+									"mediaId": "m-audio",
+									"name": "Song",
+									"duration": 1080000,
+									"startTime": 60000,
+									"trimStart": 360000,
+									"trimEnd": 0,
+									"sourceDuration": 21600000,
+									"volume": 0.4,
+									"muted": false,
+									"id": "a1",
+									"retime": {
+										"rate": 0.9
+									}
+								}
+							]
+						}
+					]
+				}
+			}
+		],
+		"currentSceneId": "s2",
+		"settings": {
+			"fps": {
+				"numerator": 30000,
+				"denominator": 1001
+			},
+			"canvasSize": {
+				"width": 1080,
+				"height": 1920
+			},
+			"canvasSizeMode": "custom",
+			"lastCustomCanvasSize": {
+				"width": 1080,
+				"height": 1920
+			},
+			"originalCanvasSize": null,
+			"background": {
+				"type": "blur",
+				"blurIntensity": 12
+			}
+		},
+		"version": 23,
+		"timelineViewState": {
+			"zoomLevel": 2.5,
+			"scrollLeft": 340,
+			"playheadTime": 360000
+		}
+	},
+	"media": [
+		{
+			"id": "m-video",
+			"name": "beach.mp4",
+			"type": "video",
+			"file": {
+				"id": "01jabcdefghjkmnpqrstvwxyz0",
+				"version": "v3"
+			},
+			"width": 1920,
+			"height": 1080,
+			"duration": 8,
+			"fps": 30,
+			"hasAudio": true
+		},
+		{
+			"id": "m-image",
+			"name": "logo.png",
+			"type": "image",
+			"file": {
+				"id": "01jabcdefghjkmnpqrstvwxyz1",
+				"version": "v1"
+			},
+			"width": 512,
+			"height": 512
+		},
+		{
+			"id": "m-audio",
+			"name": "song.wav",
+			"type": "audio",
+			"file": {
+				"id": "01jabcdefghjkmnpqrstvwxyz2",
+				"version": "v9"
+			},
+			"duration": 180
+		}
+	]
+}
