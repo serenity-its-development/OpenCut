@@ -21,6 +21,7 @@
  */
 import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMediaUrl, sameValue, type MediaRef, type OtioDocument } from "./otio.ts";
 import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cut-otio.ts";
+import { carry, foreignOf, type Foreign } from "./foreign.ts";
 
 type J = Record<string, any>;
 
@@ -104,6 +105,8 @@ export class CutSession {
 	private pending: { raw: J; clips: Map<string, J>; origins: Map<string, Origin>; sceneAt: Map<string, number> } | null = null;
 	/** Which timeline of the file each scene is (by index among the file's timelines). */
 	private readonly sceneAt = new Map<string, number>();
+	/** In a Cut project: what it holds that Cut does not own (another tool's keys, at any level), put back on every save. */
+	private foreign: Foreign = new Map();
 	private base: { project: string; media: string; tracks: Map<string, string[]>; names: Map<string, string>; switches: Map<string, string>; bookmarks: Map<string, string>; settings: string } | null = null;
 
 	private constructor(mode: "cut" | "carried", bytes: Uint8Array, raw: J, doc: OtioDocument | null, project: J, media: CutMedia[], locked: LockedTrack[]) {
@@ -133,8 +136,12 @@ export class CutSession {
 			} catch {
 				back = null;
 			}
-			if (!back || !sameValue(back, raw)) throw new OtioRefusal("format-not-round-trip", `${name} holds parts a Cut project does not, which a save would lose; it is not opened for editing`);
-			return new CutSession("cut", kept, raw, null, cut.project, cut.media, []);
+			// Keys Cut does not own (Film's metadata.filmcraft, any other editor's, at any level) are carried; anything else Cut would damage.
+			const foreign = back ? foreignOf(raw, back) : "Cut's writer cannot write it back";
+			if (typeof foreign === "string") throw new OtioRefusal("format-not-round-trip", `${name} holds parts a Cut project does not, which a save would lose (${foreign}); it is not opened for editing`);
+			const s = new CutSession("cut", kept, raw, null, cut.project, cut.media, []);
+			s.foreign = foreign;
+			return s;
 		}
 		const doc = decodeOtio(name, bytes);
 		return CutSession.carried(name, kept, raw, doc);
@@ -236,7 +243,7 @@ export class CutSession {
 		if (this.base && json(steady(p)) === this.base.project && json(m) === this.base.media) return this.bytes.slice();
 		if (this.mode === "cut") {
 			try {
-				const out = cutToOtio({ project: p, media: m });
+				const out = carry(cutToOtio({ project: p, media: m }), this.foreign);
 				this.pending = { raw: out, clips: new Map(), origins: new Map(), sceneAt: new Map() };
 				return write(out);
 			} catch (e) {
