@@ -1,5 +1,6 @@
 import type { EditorCore } from "@/core";
 import type { Command, CommandResult } from "@/commands";
+import { BatchCommand } from "@/commands/batch-command";
 import type { EditorSelectionSnapshot } from "@/selection/editor-selection";
 import { applyRippleAdjustments, computeRippleAdjustments } from "@/ripple";
 import type { SceneTracks } from "@/timeline/types";
@@ -42,6 +43,30 @@ export class CommandManager {
 			previousSelection: this.getSelectionSnapshot(),
 		});
 		this.redoStack = [];
+	}
+
+	/**
+	 * OneOS (files/025): run `fn` as ONE undo step. Every command it executes is gathered into one history entry; if it throws, what it did
+	 * is undone (newest first) and the error goes on.
+	 */
+	runAsOne(fn: () => void): void {
+		const mark = this.history.length;
+		try {
+			fn();
+		} catch (error) {
+			while (this.history.length > mark) this.history.pop()?.command.undo();
+			this.runReactors();
+			throw error;
+		}
+		const entries = this.history.splice(mark);
+		if (entries.length === 1) this.history.push(entries[0]);
+		else if (entries.length > 1) {
+			this.history.push({
+				command: new BatchCommand(entries.map((e) => e.command)),
+				previousSelection: entries[0].previousSelection,
+				selectionOverride: entries.find((e) => e.selectionOverride !== undefined)?.selectionOverride,
+			});
+		}
 	}
 
 	registerReactor(reactor: () => void): void {

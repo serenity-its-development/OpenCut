@@ -12,6 +12,8 @@
  *   makes a NEW version through the compare-and-set on the version it opened and answers `craft:saved {session, versionId}` or
  *   `craft:refused {session, code, reason}`. An export (MP4/WebM) goes with `saveAs: true`: a new file beside the project, never the project.
  * - `craft:failed {error}` (to the parent): the editor could not start, or the file was refused (by name).
+ * - `craft:command {session, id, method: "command.batch", params: {label, steps}}` (from the parent): the assistant's run (files/025), handed
+ *   to the editor (`onCommand`) and answered `craft:result {session, id, ok, result | error}`; any other method is answered refused, by name.
  * - `craft:medium:need {session, id, url}` (to the parent): the bytes of a medium the project uses, named by its OneOS reference
  *   `oneos:file/<file id>?version=<version>` (files/989). The host reads it as the person, through the storage proxy, and answers
  *   `craft:medium:data {session, id, url, name, mime, bytes, versionId}` (that exact version) or `{session, id, url, code, reason}`.
@@ -22,6 +24,8 @@ import { parseMediaUrl } from "./otio.ts";
 
 /** The most bytes one medium may carry into the frame (the host states the same bound). */
 export const MEDIUM_MAX_BYTES = 2 * 1024 * 1024 * 1024 - 1;
+
+export type CommandAnswer = { ok: true; result: unknown } | { ok: false; error: string };
 
 export type MediumAnswer = { ok: true; name: string; mime: string; bytes: Uint8Array<ArrayBuffer>; versionId: string } | { ok: false; code: string; reason: string };
 
@@ -72,6 +76,7 @@ export class HostBridge {
 	private saving: { resolve: (a: SaveAnswer) => void; saveAs: boolean } | null = null;
 	private readonly media = new Map<string, { url: string; version: string; resolve: (a: MediumAnswer) => void }>();
 	private nextMedium = 0;
+	private runner: ((params: unknown) => CommandAnswer) | null = null;
 	private readonly win: BridgeWindow;
 	private readonly declared: HostDeclared;
 	private readonly onOpen: (o: Opened) => void;
@@ -123,6 +128,11 @@ export class HostBridge {
 		});
 	}
 
+	/** The editor takes the assistant's runs from now on. */
+	onCommand(run: (params: unknown) => CommandAnswer): void {
+		this.runner = run;
+	}
+
 	/** The bytes of a medium the project uses, asked of the host by its OneOS reference; anything else is refused here, by name, unasked. */
 	medium(url: string): Promise<MediumAnswer> {
 		const o = this.opened;
@@ -158,6 +168,20 @@ export class HostBridge {
 			return;
 		}
 		if (!this.opened || m.session !== this.opened.session) return;
+		if (m.type === "craft:command") {
+			if (typeof m.id !== "number" || !Number.isInteger(m.id)) return;
+			const reply = (a: CommandAnswer) => this.post({ type: "craft:result", session: this.opened?.session, id: m.id, ...a });
+			if (m.method !== "command.batch") { reply({ ok: false, error: `craft-method-unknown: Cut answers command.batch only, not ${String(m.method)}` }); return; }
+			if (!this.runner) { reply({ ok: false, error: "craft-not-ready: the project is not loaded yet" }); return; }
+			let answer: CommandAnswer;
+			try {
+				answer = this.runner(m.params);
+			} catch (e) {
+				answer = { ok: false, error: `craft-run-failed: ${(e as Error).message}` };
+			}
+			reply(answer);
+			return;
+		}
 		if (m.type === "craft:medium:data") {
 			const w = typeof m.id === "string" ? this.media.get(m.id) : undefined;
 			if (!w || m.url !== w.url) return;

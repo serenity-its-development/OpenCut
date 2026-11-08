@@ -6,6 +6,7 @@
  *   of the host one by one (`craft:medium:need`) and handed over as bytes; the frame fetches nothing.
  * - Open: `CutSession.open` decides how (a Cut project whole, any other .otio carried with what Cut cannot edit locked and named). A file
  *   or a medium it cannot open is refused by name (`craft:failed`), never opened half.
+ * - The assistant's run (`craft:command`, files/025) is run by `command-host.ts` once the project is loaded, as ONE undo step.
  * - Save: the project as the editor holds it -> `CutSession.save` -> `craft:save` on the version opened; `craft:saved` makes those bytes
  *   the file (`committed`), a refusal is said by name and nothing is lost. An export (MP4/WebM) is a NEW file beside the project.
  */
@@ -23,6 +24,7 @@ import type { MediaTime } from "@/wasm";
 import { HostBridge, readDeclared, type Opened } from "./host-bridge.ts";
 import { CutSaveRefusal, CutSession, type LockedTrack } from "./cut-session.ts";
 import { OTIO_MAX_BYTES, OTIO_MIME, mediaUrl } from "./otio.ts";
+import { runInEditor } from "./command-host.ts";
 import type { CutMedia } from "./cut-otio.ts";
 
 /** The one project a host-mode window holds. */
@@ -144,6 +146,12 @@ export class HostMode {
 		if (!held) return;
 		s.baseline(held.project, held.media);
 		this.settled = true;
+		// The assistant's runs (files/025) from now on: a read-only window takes none.
+		this.bridge.onCommand((params) => {
+			const o = this.opened;
+			if (o?.readOnly) return { ok: false, error: `craft-read-only: ${o.name} is open read-only; the assistant edits nothing here` };
+			return runInEditor(params);
+		});
 		const editor = EditorCore.getInstance();
 		const changed = () => this.measureSoon();
 		this.unsubscribe = [editor.scenes.subscribe(changed), editor.timeline.subscribe(changed), editor.media.subscribe(changed)];

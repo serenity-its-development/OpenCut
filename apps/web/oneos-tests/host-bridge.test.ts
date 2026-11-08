@@ -121,3 +121,29 @@ test("a medium the host refuses comes back refused by name; one of another versi
 	assert.equal((await q as any).code, "media-version-mismatch");
 	assert.ok(MEDIUM_MAX_BYTES >= 1024 * 1024 * 1024);
 });
+
+test("the assistant's run (craft:command) of this session is handed to the editor and answered craft:result; any other method is answered refused", () => {
+	const f = frame();
+	open(f);
+	const heard: unknown[] = [];
+	f.bridge.onCommand((params) => { heard.push(params); return { ok: true, result: { ran: 1 } }; });
+	f.from({ type: "craft:command", session: "s1", id: 7, method: "command.batch", params: { label: "x", steps: [{ name: "split" }] } });
+	assert.deepEqual(heard, [{ label: "x", steps: [{ name: "split" }] }]);
+	assert.deepEqual(f.sent.at(-1)!.m, { type: "craft:result", session: "s1", id: 7, ok: true, result: { ran: 1 } });
+	f.from({ type: "craft:command", session: "s1", id: 8, method: "file.open", params: {} });
+	assert.deepEqual(f.sent.at(-1)!.m, { type: "craft:result", session: "s1", id: 8, ok: false, error: "craft-method-unknown: Cut answers command.batch only, not file.open" });
+	const before = f.sent.length;
+	f.from({ type: "craft:command", session: "other", id: 9, method: "command.batch", params: {} });
+	f.from({ type: "craft:command", session: "s1", id: "9", method: "command.batch", params: {} });
+	assert.equal(f.sent.length, before, "another session's, or a malformed one, is dropped");
+	f.bridge.onCommand(() => ({ ok: false, error: "step 1: nope" }));
+	f.from({ type: "craft:command", session: "s1", id: 10, method: "command.batch", params: {} });
+	assert.deepEqual(f.sent.at(-1)!.m, { type: "craft:result", session: "s1", id: 10, ok: false, error: "step 1: nope" });
+});
+
+test("a run before the editor can take one is refused by name, never left unanswered", () => {
+	const f = frame();
+	open(f);
+	f.from({ type: "craft:command", session: "s1", id: 1, method: "command.batch", params: {} });
+	assert.deepEqual(f.sent.at(-1)!.m, { type: "craft:result", session: "s1", id: 1, ok: false, error: "craft-not-ready: the project is not loaded yet" });
+});
