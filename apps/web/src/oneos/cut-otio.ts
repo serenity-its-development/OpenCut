@@ -13,14 +13,17 @@
  *     everything else of the element         -> metadata.opencut.element (transform, opacity, blend, effects, masks, animations, retime,
  *                                               text style, volume, trimEnd, sourceDuration ...)
  * Times are integer ticks: RationalTime { rate: 120000, value: ticks }, exact.
- * Refused by name (it cannot be SAVED under files/989): a library sound (its media is an address, not a OneOS file), an element whose
- * media is not in the project's media list, overlapping elements on one track (an OTIO track is a sequence).
+ * Overlapping elements: OpenCut's placement and moves refuse an overlap, but a resize does not check (timeline/controllers/resize-controller.ts),
+ * so a track can hold one. An OTIO Track.1 is a sequence, so such a track is saved as a Stack.1 of lanes (Track.1 each, the fewest that
+ * hold its elements without overlap) carrying the track's metadata; reading merges the lanes back in the track's own element order.
+ * Refused by name: a library sound (`library-sound-off`: Freesound is off in OneOS, so no sound is ever imported from it; a sound is used
+ * only once it is a OneOS file), and an element whose medium is not in the project's media list.
  */
 
 export const TICKS = 120_000;
 
 export class CutOtioRefusal extends Error {
-	readonly code: "media-not-referenced" | "format-not-round-trip" | "file-unreadable";
+	readonly code: "media-not-referenced" | "format-not-round-trip" | "file-unreadable" | "library-sound-off";
 	constructor(code: CutOtioRefusal["code"], reason: string) {
 		super(`${code}: ${reason}`);
 		this.code = code;
@@ -75,28 +78,41 @@ export function cutToOtio(cut: CutProject): J {
 	};
 }
 
-function track(t: J, slot: string, media: Map<string, CutMedia>): J {
-	const els = [...t.elements].sort((a: J, b: J) => a.startTime - b.startTime);
+function lane(els: J[], media: Map<string, CutMedia>): J[] {
 	const children: J[] = [];
 	let at = 0;
 	for (const e of els) {
-		if (e.startTime < at) throw new CutOtioRefusal("format-not-round-trip", `elements overlap on track ${t.name} at ${e.name}`);
 		if (e.startTime > at) children.push({ OTIO_SCHEMA: "Gap.1", name: "", source_range: tr(0, e.startTime - at), effects: [], markers: [], enabled: true, metadata: {} });
 		children.push(clip(e, media));
 		at = e.startTime + e.duration;
 	}
-	const order = els.map((e: J) => e.id);
+	return children;
+}
+
+function track(t: J, slot: string, media: Map<string, CutMedia>): J {
+	const els = [...t.elements].sort((a: J, b: J) => a.startTime - b.startTime);
+	// The fewest lanes that hold the elements without overlap (one, unless a resize made two overlap).
+	const lanes: J[][] = [];
+	for (const e of els) {
+		const free = lanes.find((l) => { const last = l[l.length - 1]; return last.startTime + last.duration <= e.startTime; });
+		if (free) free.push(e);
+		else lanes.push([e]);
+	}
+	const kind = slot === "audio" ? "Audio" : "Video";
+	const meta = { opencut: { track: omit(t, ["name", "elements"]), slot, order: t.elements.map((e: J) => e.id) } };
+	if (lanes.length <= 1) {
+		return { OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: meta, children: lane(lanes[0] ?? [], media) };
+	}
 	return {
-		OTIO_SCHEMA: "Track.1", name: t.name, kind: slot === "audio" ? "Audio" : "Video", source_range: null, effects: [], markers: [], enabled: true,
-		metadata: { opencut: { track: omit(t, ["name", "elements"]), slot, order } },
-		children,
+		OTIO_SCHEMA: "Stack.1", name: t.name, source_range: null, effects: [], markers: [], enabled: true, metadata: meta,
+		children: lanes.map((l, i) => ({ OTIO_SCHEMA: "Track.1", name: `${t.name} (lane ${i + 1})`, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: { opencut: { lane: i } }, children: lane(l, media) })),
 	};
 }
 
 function clip(e: J, media: Map<string, CutMedia>): J {
 	let ref: J;
 	if (MEDIA_TYPES.has(e.type)) {
-		if (e.type === "audio" && e.sourceType === "library") throw new CutOtioRefusal("media-not-referenced", `the library sound ${e.name} is an address (${String(e.sourceUrl).slice(0, 60)}), not a OneOS file`);
+		if (e.type === "audio" && e.sourceType === "library") throw new CutOtioRefusal("library-sound-off", `the library sound ${e.name} comes from Freesound, which is off in OneOS; a sound is used only once it is a OneOS file`);
 		const m = media.get(e.mediaId);
 		if (!m) throw new CutOtioRefusal("media-not-referenced", `${e.name} names the medium ${e.mediaId}, which the project does not hold`);
 		ref = { OTIO_SCHEMA: "ExternalReference.1", name: m.name, target_url: `oneos:file/${m.file.id}?version=${m.file.version}`, available_range: null, available_image_bounds: null, metadata: {} };
@@ -120,12 +136,15 @@ export function otioToCut(doc: J): CutProject {
 		for (const t of tl.tracks.children as J[]) {
 			const meta = t.metadata.opencut;
 			const elements: J[] = [];
-			let at = 0;
-			for (const c of t.children as J[]) {
-				if (c.OTIO_SCHEMA === "Gap.1") { at += ticksOf(c.source_range.duration, "a gap"); continue; }
-				const duration = ticksOf(c.source_range.duration, c.name);
-				elements.push({ ...c.metadata.opencut.element, name: c.name, startTime: at, duration, trimStart: ticksOf(c.source_range.start_time, c.name) });
-				at += duration;
+			const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
+			for (const l of lanes) {
+				let at = 0;
+				for (const c of l.children as J[]) {
+					if (c.OTIO_SCHEMA === "Gap.1") { at += ticksOf(c.source_range.duration, "a gap"); continue; }
+					const duration = ticksOf(c.source_range.duration, c.name);
+					elements.push({ ...c.metadata.opencut.element, name: c.name, startTime: at, duration, trimStart: ticksOf(c.source_range.start_time, c.name) });
+					at += duration;
+				}
 			}
 			const byId = new Map(elements.map((e) => [e.id, e]));
 			const ordered = (meta.order as string[]).map((id) => byId.get(id));
