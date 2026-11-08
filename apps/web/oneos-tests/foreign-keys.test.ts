@@ -125,7 +125,7 @@ test("Cut's maximal project is pinned as the file Film opens (cut-project.otio)"
 	const out = enc(cutToOtio(maximal() as any));
 	const golden = join(FIX, "cut-project.otio");
 	if (process.env.CUT_BLESS) writeFileSync(golden, out);
-	assert.deepEqual(new Uint8Array(readFileSync(golden)), out, "Cut writes its project as it is pinned");
+	assert.ok(Buffer.from(out).equals(readFileSync(golden)), "Cut writes its project as it is pinned (CUT_BLESS=1 writes it)");
 });
 
 test("the pure Cut project FILM saved (film-saved-cut.otio) opens in Cut's project mode, Film's edit read, and Cut's edit keeps Film's keys", () => {
