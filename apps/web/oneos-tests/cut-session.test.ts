@@ -154,16 +154,77 @@ test("a new medium placed in a carried project is saved as a OneOS file; one tha
 	assert.throws(() => s.save(p, unref as any), (e: unknown) => e instanceof CutSaveRefusal && e.code === "media-not-referenced" && /drone\.mp4/.test(e.message));
 });
 
-test("what a carried project has no place for is refused by name at save, and nothing is written", () => {
+/** A text element, a sticker and an effect as the editor makes them. */
+const text = (id: string, start: number) => ({ id, type: "text", name: "Title", content: "Hello", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: 1, startTime: start, duration: TICKS, trimStart: 0, trimEnd: 0 });
+
+test("Cut's own elements, scenes and overlaps are saved INTO a carried file as Cut saves them (one format holds both), and reopen editable", () => {
+	const src = filmDoc();
+	const s = CutSession.open("trip.otio", enc(src));
+	const p = load(s);
+	p.scenes[0].tracks.overlay.push({ id: "tx", name: "Titles", type: "text", hidden: false, elements: [text("t1", 0), text("t2", 2 * TICKS)] });
+	p.scenes[0].tracks.overlay.push({ id: "fx", name: "Grade", type: "effect", hidden: false, elements: [{ id: "e1", type: "effect", name: "Warm", effectType: "colorCorrect", params: { temperature: 0.2 }, startTime: 0, duration: 3 * TICKS, trimStart: 0, trimEnd: 0 }] });
+	// A resize the editor does not check: "pier" now overlaps "beach" on V1.
+	p.scenes[0].tracks.main.elements[1].startTime = 2 * TICKS;
+	p.scenes.push({ id: "s-new", name: "Teaser", isMain: false, createdAt: "2026-11-09T00:00:00.000Z", updatedAt: "2026-11-09T00:00:00.000Z", bookmarks: [{ time: TICKS, note: "hook" }], tracks: {
+		main: { id: "s-new-main", name: "Main", type: "video", muted: false, hidden: false, elements: [{ ...p.scenes[0].tracks.main.elements[0], id: "n1", startTime: 0 }] },
+		overlay: [{ id: "s-new-gfx", name: "Stickers", type: "graphic", hidden: false, elements: [{ id: "g1", type: "sticker", name: "Star", stickerId: "emoji:star", transform: { position: { x: 1, y: 2 }, scale: 1, rotate: 0, flipX: false }, opacity: 0.5, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 }] }],
+		audio: [],
+	} });
+	const out = dec(s.save(p, s.media));
+	assert.ok(sameValue(out.metadata, src.metadata), "Film's project is untouched");
+	assert.ok(sameValue(out.children[0].tracks.children[1], src.children[0].tracks.children[1]), "Film's locked track is untouched");
+	const edit = out.children[0].tracks.children;
+	assert.equal(edit[0].OTIO_SCHEMA, "Stack.1", "the overlapping track is saved as stacked lanes");
+	assert.deepEqual(edit[0].children.map((l: any) => l.OTIO_SCHEMA), ["Track.1", "Track.1"]);
+	assert.deepEqual(edit[0].metadata.filmcraft, { track: "V1" }, "Film's own track data rides on the stack");
+	const titles = edit.find((t: any) => t.name === "Titles");
+	assert.deepEqual(titles.children[0].media_references.DEFAULT_MEDIA, { OTIO_SCHEMA: "GeneratorReference.1", name: "Title", generator_kind: "OpenCut.text", parameters: {}, available_range: null, metadata: {} });
+	assert.equal(titles.children[0].metadata.opencut.element.content, "Hello");
+	assert.equal(out.children.length, 3, "the new scene is a new Timeline in the collection");
+	assert.equal(out.children[2].name, "Teaser");
+	// Reopened: everything Cut wrote is Cut's again, editable, value for value.
+	const again = CutSession.open("trip.otio", enc(out));
+	assert.deepEqual(again.locked.map((l) => `${l.scene}/${l.track}`), ["Edit/V2"], "only Film's transition track is locked");
+	const ap = load(again);
+	const sc = ap.scenes[0];
+	assert.deepEqual(sc.tracks.main.elements.map((e: any) => [e.name, e.startTime]), [["beach", 0], ["pier", 2 * TICKS]]);
+	const t = sc.tracks.overlay.find((x: any) => x.name === "Titles");
+	assert.equal(t.type, "text");
+	assert.deepEqual(t.elements.map((e: any) => [e.type, e.content, e.startTime]), [["text", "Hello", 0], ["text", "Hello", 2 * TICKS]]);
+	assert.deepEqual(sc.tracks.overlay.find((x: any) => x.name === "Grade").elements[0].params, { temperature: 0.2 });
+	assert.equal(ap.scenes[2].name, "Teaser");
+	assert.deepEqual(ap.scenes[2].bookmarks, [{ time: TICKS, note: "hook" }]);
+	assert.deepEqual(ap.scenes[2].tracks.overlay[0].elements.map((e: any) => [e.type, e.stickerId, e.opacity]), [["sticker", "emoji:star", 0.5]]);
+	assert.deepEqual(again.save(ap, again.media), enc(out), "unedited after the reopen: the very bytes");
+	// Edited again, the lanes resolve back into one sequence when the overlap is gone.
+	ap.scenes[0].tracks.main.elements[1].startTime = 3.5 * TICKS;
+	const third = dec(again.save(ap, again.media));
+	assert.equal(third.children[0].tracks.children[0].OTIO_SCHEMA, "Track.1");
+	assert.deepEqual(third.children[0].tracks.children[0].metadata.filmcraft, { track: "V1" });
+});
+
+test("a lone Timeline given a second scene becomes a collection holding it whole", () => {
+	const src = filmDoc().children[1];
+	const s = CutSession.open("alt.otio", enc(src));
+	const p = load(s);
+	p.scenes.push({ ...copy(p.scenes[0]), id: "s2", name: "Second" });
+	p.scenes[1].tracks.main.id = "s2-main";
+	p.scenes[1].tracks.main.elements = p.scenes[1].tracks.main.elements.map((e: any, i: number) => ({ ...e, id: `s2-${i}` }));
+	const out = dec(s.save(p, s.media));
+	assert.equal(out.OTIO_SCHEMA, "SerializableCollection.1");
+	assert.ok(sameValue(out.children[0], src), "the timeline the file was is kept whole");
+	assert.equal(out.children[1].name, "Second");
+});
+
+test("what Cut may not save into a file is still refused by name, and nothing is written", () => {
 	const s = CutSession.open("trip.otio", enc(filmDoc()));
-	const refusedAs = (edit: (p: any) => void, code: string, part: RegExp) => {
-		const p = load(CutSession.open("trip.otio", enc(filmDoc())));
-		edit(p);
-		assert.throws(() => s.save(p, s.media), (e: unknown) => e instanceof CutSaveRefusal && e.code === code && part.test(e.message));
-	};
-	refusedAs((p) => p.scenes.push({ ...p.scenes[1], id: "s-new", name: "New" }), "scene-not-carried", /New/);
-	refusedAs((p) => p.scenes[0].tracks.overlay.push({ id: "tx", name: "Titles", type: "text", hidden: false, elements: [{ id: "t", type: "text", name: "Hi", startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 }] }), "element-not-carried", /text "Hi"/);
-	refusedAs((p) => { p.scenes[0].tracks.main.elements[0].sourceType = "library"; p.scenes[0].tracks.main.elements[0].type = "audio"; }, "library-sound-off", /beach/);
+	const p = load(s);
+	p.scenes[0].tracks.main.elements[0].sourceType = "library";
+	p.scenes[0].tracks.main.elements[0].type = "audio";
+	assert.throws(() => s.save(p, s.media), (e: unknown) => e instanceof CutSaveRefusal && e.code === "library-sound-off" && /beach/.test(e.message));
+	const q = load(CutSession.open("trip.otio", enc(filmDoc())));
+	q.scenes.splice(1, 1);
+	assert.throws(() => s.save(q, s.media), (e: unknown) => e instanceof CutSaveRefusal && e.code === "scene-not-carried" && /Alt/.test(e.message));
 });
 
 test("a carried track Cut would damage on rewrite is locked at open, by name", () => {

@@ -104,3 +104,22 @@ test("the Create blank is an empty timeline with one video and one audio track, 
 	assert.deepEqual(doc.timelines[0].tracks.map((t) => t.kind), ["Video", "Audio"]);
 	assert.deepEqual(encodeOtio(doc), b);
 });
+
+test("Cut's own clips (an OpenCut generator with its element) and lane stacks open editable; anyone else's generator or stack stays locked", () => {
+	const gen = (kind: string, meta: unknown) => ({ OTIO_SCHEMA: "Clip.2", name: "Title", source_range: range(0, 30), effects: [], markers: [], enabled: true,
+		media_references: { DEFAULT_MEDIA: { OTIO_SCHEMA: "GeneratorReference.1", name: "Title", generator_kind: kind, parameters: {}, available_range: null, metadata: {} } },
+		active_media_reference_key: "DEFAULT_MEDIA", metadata: meta });
+	const own = decodeOtio("t.otio", bytes(timeline([gen("OpenCut.text", { opencut: { element: { content: "Hi" } } })])));
+	assert.equal(own.timelines[0].tracks[0].locked, null);
+	assert.equal(own.timelines[0].tracks[0].items[0].type, "generator");
+	assert.match(decodeOtio("t.otio", bytes(timeline([gen("SolidColor", {})]))).timelines[0].tracks[0].locked!, /not a OneOS file/);
+	assert.match(decodeOtio("t.otio", bytes(timeline([gen("OpenCut.text", {})]))).timelines[0].tracks[0].locked!, /not a OneOS file/);
+	const lanes = timeline([]);
+	const lane = (i: number, children: unknown[]) => ({ OTIO_SCHEMA: "Track.1", name: `V1 (lane ${i + 1})`, kind: "Video", source_range: null, effects: [], markers: [], enabled: true, metadata: { opencut: { lane: i } }, children });
+	lanes.tracks.children = [{ OTIO_SCHEMA: "Stack.1", name: "V1", source_range: null, effects: [], markers: [], enabled: true, metadata: { opencut: { track: { muted: false, hidden: false } } }, children: [lane(0, [clip("a", mediaUrl(FILE, "v1"))]), lane(1, [clip("b", mediaUrl(FILE, "v2"))])] }] as any;
+	const t = decodeOtio("t.otio", bytes(lanes)).timelines[0].tracks[0];
+	assert.equal(t.locked, null);
+	assert.equal(t.kind, "Video");
+	assert.deepEqual(t.lanes!.map((l) => l.length), [1, 1]);
+	assert.ok(sameValue(JSON.parse(new TextDecoder().decode(encodeOtio(decodeOtio("t.otio", bytes(lanes))))), lanes));
+});

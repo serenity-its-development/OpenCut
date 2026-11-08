@@ -7,14 +7,17 @@
  *   scene, track, element, effect, bookmark and setting, through `otioToCut`; a save writes it through `cutToOtio`. It opens only when
  *   that writer gives the file back value for value (else `format-not-round-trip`), so a save can never lose a part of it.
  * - **Any other .otio** (Film's whole project, another tool's timeline) opens CARRIED (Mona 2026-11-08: "Stay on .otio, fix writers"):
- *   a plain track of clips and gaps of OneOS media becomes a Cut track; every other track is LOCKED, named with its reason and written
- *   back exactly; every key Cut does not own is untouched. Cut's own data rides under `metadata.opencut` (an element's look on its clip,
- *   a track's switches on its track, bookmarks as `Marker.2` on the stack, the project's settings on the root).
+ *   a plain track of clips and gaps of OneOS media, or of Cut's own generated elements, becomes a Cut track; every other track is LOCKED,
+ *   named with its reason and written back exactly; every key Cut does not own is untouched. Cut's own data rides under `metadata.opencut`
+ *   (an element's look on its clip, a track's type and switches on its track, bookmarks as `Marker.2` on the stack, settings on the root).
  *
- * An unedited save gives back the very bytes that were opened. In a carried project an untouched clip, gap or track is its own bytes; a
- * moved or trimmed clip is written at its track's own rate when that is exact, else in Cut's exact ticks (120000/s), never rounded. What a
- * carried project has no place for is refused by name at save, and nothing is written: a new scene, a text/sticker/graphic/effect element,
- * overlapping elements on one track, a library sound, a medium that is not a OneOS file.
+ * One format holds everything of both (Mona 2026-11-08: "one format that can encompass everything of both"): what Cut makes in a carried
+ * file is saved as Cut saves it in a Cut project, and reopens editable - a text, sticker, graphic or effect element as a `GeneratorReference.1`
+ * of kind `OpenCut.<type>` with the element under `metadata.opencut.element`; a new scene as a Timeline of its own in the collection (a lone
+ * Timeline becomes a collection holding it whole); overlapping elements as Cut's stacked lanes. An unedited save gives back the very bytes
+ * that were opened. An untouched clip, gap or track is its own bytes; a moved or trimmed clip is written at its track's own rate when that
+ * is exact, else in Cut's exact ticks (120000/s), never rounded. Refused by name at save, and nothing written: a library sound
+ * (`library-sound-off`), a medium that is not a OneOS file (`media-not-referenced`), removing another editor's timeline (`scene-not-carried`).
  */
 import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMediaUrl, sameValue, type MediaRef, type OtioDocument } from "./otio.ts";
 import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cut-otio.ts";
@@ -40,9 +43,13 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const json = (v: unknown) => JSON.stringify(v);
 const write = (v: unknown) => new TextEncoder().encode(`${JSON.stringify(v, null, 4)}\n`);
 
-/** An element's fields the clip itself carries (its place, its trim, its medium); the rest is its look, kept under metadata.opencut.element. */
-const CORE = new Set(["id", "type", "name", "startTime", "duration", "trimStart", "trimEnd", "sourceDuration", "mediaId"]);
-const extrasOf = (e: J) => Object.fromEntries(Object.entries(e).filter(([k]) => !CORE.has(k)));
+/** An element's fields its clip itself carries (its place, its trim, its medium); the rest is its look, kept under metadata.opencut.element. */
+const MEDIA_CORE = new Set(["id", "type", "name", "startTime", "duration", "trimStart", "mediaId"]);
+const GENERATED_CORE = new Set(["id", "type", "name", "startTime", "duration", "trimStart"]);
+const MEDIA_TYPES = new Set(["video", "image", "audio"]);
+/** Cut's own generated elements, saved as `GeneratorReference.1` of kind `OpenCut.<type>` (as Cut saves them in a Cut project). */
+const GENERATED = new Set(["text", "sticker", "graphic", "effect"]);
+const TRACK_TYPES = new Set(["video", "text", "audio", "graphic", "effect"]);
 
 const rt = (value: number, rate: number) => ({ OTIO_SCHEMA: "RationalTime.1", rate, value });
 const tr = (start: number, dur: number, rate: number) => ({ OTIO_SCHEMA: "TimeRange.1", start_time: rt(start, rate), duration: rt(dur, rate) });
@@ -77,8 +84,8 @@ function readRaw(name: string, bytes: Uint8Array): J {
 
 const isCutProject = (raw: J) => raw.OTIO_SCHEMA === "SerializableCollection.1" && isObj(raw.metadata) && isObj(raw.metadata.opencut) && isObj(raw.metadata.opencut.project);
 
-/** Where a carried Cut track came from: the timeline and the stack index, and the rate its own clips are timed at. */
-interface Origin { ti: number; ki: number; rate: number }
+/** Where a carried Cut track sits: its index in its timeline's stack, and the rate its own clips are timed at. */
+interface Origin { ki: number; rate: number }
 
 export class CutSession {
 	readonly mode: "cut" | "carried";
@@ -94,7 +101,9 @@ export class CutSession {
 	/** Each carried element's clip as the file holds it now (an untouched element is written back as exactly this). */
 	private readonly clipOf = new Map<string, J>();
 	/** What the last save wrote, made the file's own once the host confirms it (`committed`). */
-	private pending: { raw: J; clips: Map<string, J>; origins: Map<string, Origin> } | null = null;
+	private pending: { raw: J; clips: Map<string, J>; origins: Map<string, Origin>; sceneAt: Map<string, number> } | null = null;
+	/** Which timeline of the file each scene is (by index among the file's timelines). */
+	private readonly sceneAt = new Map<string, number>();
 	private base: { project: string; media: string; tracks: Map<string, string[]>; names: Map<string, string>; switches: Map<string, string>; bookmarks: Map<string, string>; settings: string } | null = null;
 
 	private constructor(mode: "cut" | "carried", bytes: Uint8Array, raw: J, doc: OtioDocument | null, project: J, media: CutMedia[], locked: LockedTrack[]) {
@@ -146,30 +155,42 @@ export class CutSession {
 				const trackId = `${sceneId}-k${ki}`;
 				const audio = t.kind === "Audio";
 				const own = isObj(t.raw.metadata?.opencut?.track) ? t.raw.metadata.opencut.track : {};
+				const type: string = TRACK_TYPES.has(own.type) ? own.type : audio ? "audio" : "video";
 				const elements: J[] = [];
-				let at = 0;
-				t.items.forEach((it, ii) => {
-					const start = toTicks(it.source.start, it.source.rate)!;
-					const dur = toTicks(it.source.duration, it.source.rate)!;
-					if (it.type === "gap") { at += dur; return; }
-					const ref = it.raw.media_references.DEFAULT_MEDIA;
-					const key = mediaKey(it.media);
-					if (!media.some((m) => m.id === key)) media.push({ id: key, name: typeof ref.name === "string" && ref.name ? ref.name : it.name, type: audio ? "audio" : "video", file: { id: it.media.id, version: it.media.version } });
-					const avail = isObj(ref.available_range) ? toTicks(ref.available_range.duration?.value, ref.available_range.duration?.rate) : null;
-					const look = isObj(it.metadata.opencut?.element) ? clone(it.metadata.opencut.element) : {};
-					clips.set(`${trackId}-i${ii}`, clone(it.raw));
-					elements.push({
-						...look, id: `${trackId}-i${ii}`, type: audio ? "audio" : "video", ...(audio ? { sourceType: look.sourceType ?? "upload" } : {}), name: it.name, mediaId: key,
-						startTime: at, duration: dur, trimStart: start, trimEnd: avail === null ? 0 : Math.max(0, avail - start - dur), ...(avail === null ? {} : { sourceDuration: avail }),
+				const lanes = t.lanes ?? [t.items];
+				lanes.forEach((lane, li) => {
+					let at = 0;
+					lane.forEach((it, ii) => {
+						const start = toTicks(it.source.start, it.source.rate) as number;
+						const dur = toTicks(it.source.duration, it.source.rate) as number;
+						if (it.type === "gap") { at += dur; return; }
+						const id = t.lanes ? `${trackId}-l${li}-i${ii}` : `${trackId}-i${ii}`;
+						const look = isObj(it.metadata.opencut?.element) ? clone(it.metadata.opencut.element) : {};
+						clips.set(id, clone(it.raw));
+						if (it.type === "generator") {
+							elements.push({ trimEnd: 0, ...look, id, type: it.kind.slice("OpenCut.".length), name: it.name, startTime: at, duration: dur, trimStart: start });
+						} else {
+							const ref = it.raw.media_references.DEFAULT_MEDIA;
+							const key = mediaKey(it.media);
+							if (!media.some((m) => m.id === key)) media.push({ id: key, name: typeof ref.name === "string" && ref.name ? ref.name : it.name, type: audio ? "audio" : "video", file: { id: it.media.id, version: it.media.version } });
+							const avail = isObj(ref.available_range) ? toTicks(ref.available_range.duration?.value, ref.available_range.duration?.rate) : null;
+							const placed = avail === null ? { trimEnd: look.trimEnd ?? 0 } : { trimEnd: Math.max(0, avail - start - dur), sourceDuration: avail };
+							elements.push({
+								...look, id, type: audio ? "audio" : "video", ...(audio ? { sourceType: look.sourceType ?? "upload" } : {}), name: it.name, mediaId: key,
+								startTime: at, duration: dur, trimStart: start, ...placed,
+							});
+						}
+						at += dur;
 					});
-					at += dur;
 				});
-				origins.set(trackId, { ti, ki, rate: t.items[0]?.source.rate ?? 30 });
-				const cutTrack = audio
-					? { id: trackId, name: t.name, type: "audio", muted: own.muted === true, elements }
-					: { id: trackId, name: t.name, type: "video", muted: own.muted === true, hidden: own.hidden === true, elements };
-				if (audio) tracks.audio.push(cutTrack);
-				else if (!tracks.main) tracks.main = cutTrack;
+				origins.set(trackId, { ki, rate: lanes.flat()[0]?.source.rate ?? 30 });
+				const cutTrack = type === "audio"
+					? { id: trackId, name: t.name, type, muted: own.muted === true, elements }
+					: type === "video"
+						? { id: trackId, name: t.name, type, muted: own.muted === true, hidden: own.hidden === true, elements }
+						: { id: trackId, name: t.name, type, hidden: own.hidden === true, elements };
+				if (type === "audio") tracks.audio.push(cutTrack);
+				else if (type === "video" && !tracks.main) tracks.main = cutTrack;
 				else tracks.overlay.push(cutTrack);
 			});
 			// Cut always holds a main video track; one the file did not have is written only once it holds something.
@@ -184,6 +205,7 @@ export class CutSession {
 		const s = new CutSession("carried", bytes, raw, doc, project, media, locked);
 		for (const [k, v] of origins) s.origins.set(k, v);
 		for (const [k, v] of clips) s.clipOf.set(k, v);
+		for (const [ti, sc] of scenes.entries()) s.sceneAt.set(sc.id, ti);
 		return s;
 	}
 
@@ -215,16 +237,16 @@ export class CutSession {
 		if (this.mode === "cut") {
 			try {
 				const out = cutToOtio({ project: p, media: m });
-				this.pending = { raw: out, clips: new Map(), origins: new Map() };
+				this.pending = { raw: out, clips: new Map(), origins: new Map(), sceneAt: new Map() };
 				return write(out);
 			} catch (e) {
 				if (e instanceof CutOtioRefusal) throw new CutSaveRefusal(e.code, e.message.replace(/^[a-z-]+: /, ""));
 				throw e;
 			}
 		}
-		const clips = new Map<string, J>(), origins = new Map<string, Origin>();
-		const out = this.carriedSave(p, m, clips, origins);
-		this.pending = { raw: out, clips, origins };
+		const clips = new Map<string, J>(), origins = new Map<string, Origin>(), sceneAt = new Map<string, number>();
+		const out = this.carriedSave(p, m, clips, origins, sceneAt);
+		this.pending = { raw: out, clips, origins, sceneAt };
 		return write(out);
 	}
 
@@ -244,21 +266,36 @@ export class CutSession {
 			this.origins.clear();
 			for (const [k, v] of p.origins) this.origins.set(k, v);
 			for (const [k, v] of p.clips) this.clipOf.set(k, v);
+			this.sceneAt.clear();
+			for (const [k, v] of p.sceneAt) this.sceneAt.set(k, v);
 		}
 		this.baseline(project, media);
 	}
 
-	private carriedSave(p: J, media: CutMedia[], clips: Map<string, J>, origins: Map<string, Origin>): J {
+	private carriedSave(p: J, media: CutMedia[], clips: Map<string, J>, origins: Map<string, Origin>, sceneAt: Map<string, number>): J {
 		const base = this.base;
-		const raw = clone(this.raw);
-		const roots: J[] = raw.OTIO_SCHEMA === "Timeline.1" ? [raw] : raw.children.filter((c: unknown) => isObj(c) && c.OTIO_SCHEMA === "Timeline.1");
-		const want = new Set(this.doc!.timelines.map((_, ti) => `otio-t${ti}`));
+		let raw = clone(this.raw);
+		const timelinesOf = (r: J): J[] => (r.OTIO_SCHEMA === "Timeline.1" ? [r] : r.children.filter((c: unknown) => isObj(c) && c.OTIO_SCHEMA === "Timeline.1"));
+		const roots = timelinesOf(raw);
 		const scenes = p.scenes as J[];
-		for (const sc of scenes) if (!want.has(sc.id)) throw new CutSaveRefusal("scene-not-carried", `the scene "${sc.name}" is new; this project's timelines are the file's own (save it as a Cut project to add scenes)`);
-		for (const id of want) if (!scenes.some((sc) => sc.id === id)) throw new CutSaveRefusal("scene-not-carried", `a timeline of the file was removed; this project's timelines are the file's own`);
 		const mediaById = new Map(media.map((x) => [x.id, x]));
+		// A timeline the person removed: Cut's own goes; any other is the file's (another editor's sequence), refused by name.
+		const dropped = new Set<J>();
+		roots.forEach((tl, ti) => {
+			if (scenes.some((sc) => this.sceneAt.get(sc.id) === ti)) return;
+			if (!isObj(tl.metadata?.opencut?.scene)) throw new CutSaveRefusal("scene-not-carried", `the timeline "${tl.name}" was removed; it is this file's own (another editor's), so Cut keeps it`);
+			dropped.add(tl);
+		});
+		const fresh: J[] = [];
+		const freshScenes: J[] = [];
 		for (const sc of scenes) {
-			const ti = Number(sc.id.slice("otio-t".length));
+			const ti = this.sceneAt.get(sc.id);
+			if (ti === undefined) {
+				const tl = this.timelineOf(sc, mediaById, clips, origins);
+				fresh.push(tl);
+				freshScenes.push(sc);
+				continue;
+			}
 			const tl = roots[ti];
 			tl.name = sc.name;
 			const stack = tl.tracks;
@@ -269,85 +306,145 @@ export class CutSession {
 				const was = base?.tracks.get(t.id);
 				const elementsSame = was !== undefined && json((t.elements as J[]).map(json)) === json(was);
 				if (origin) {
-					const out = kept[origin.ki]!;
-					if (!elementsSame) out.children = this.trackChildren(t, out.children, origin.rate, mediaById, clips);
+					const before = kept[origin.ki] as J;
+					const out = elementsSame ? before : this.trackBody(t, before, origin.rate, mediaById, clips);
 					if (!base || base.names.get(t.id) !== t.name) out.name = t.name;
-					if (!base || base.switches.get(t.id) !== json(switchesOf(t))) out.metadata = { ...out.metadata, opencut: { ...(out.metadata?.opencut ?? {}), track: switchesOf(t) } };
+					if (!base || base.switches.get(t.id) !== json(switchesOf(t))) out.metadata = { ...out.metadata, opencut: { ...(out.metadata?.opencut ?? {}), track: trackInfo(t) } };
+					kept[origin.ki] = out;
 				} else if ((t.elements as J[]).length) {
-					const kind = t.type === "audio" ? "Audio" : "Video";
-					added.push({ id: t.id, track: { OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: { opencut: { track: switchesOf(t) } }, children: this.trackChildren(t, [], TICKS, mediaById, clips) } });
+					added.push({ id: t.id, track: this.trackBody(t, null, TICKS, mediaById, clips) });
 				}
 			}
 			// A track of the file Cut no longer holds was removed by the person (a locked one is never in Cut's hands, so never removed).
 			const held = new Set(allTracks(sc).map((t: J) => this.origins.get(t.id)?.ki).filter((k) => k !== undefined));
-			for (const [k, o] of this.origins) if (k.startsWith(`${sc.id}-`) && !held.has(o.ki)) kept[o.ki] = null;
+			const mine = [...this.origins].filter(([k]) => k.startsWith(`${sc.id}-`));
+			for (const [, o] of mine) if (!held.has(o.ki)) kept[o.ki] = null;
 			// The stack as saved: the file's tracks Cut still holds (and every locked one) in their places, then the new ones. Where each Cut
 			// track now sits is what the next save needs, once the host confirms this one.
 			const removed = new Set(kept.map((x, i) => (x === null ? i : -1)).filter((i) => i >= 0));
 			const shift = (ki: number) => ki - [...removed].filter((r) => r < ki).length;
-			for (const [k, o] of this.origins) if (k.startsWith(`${sc.id}-`) && !removed.has(o.ki)) origins.set(k, { ...o, ki: shift(o.ki) });
+			for (const [k, o] of mine) if (!removed.has(o.ki)) origins.set(k, { ...o, ki: shift(o.ki) });
 			const survivors = kept.filter((x): x is J => x !== null);
 			added.forEach((a, i) => {
-				origins.set(a.id, { ti, ki: survivors.length + i, rate: TICKS });
+				origins.set(a.id, { ki: survivors.length + i, rate: TICKS });
 			});
 			stack.children = [...survivors, ...added.map((a) => a.track)];
 			if (!base || base.bookmarks.get(sc.id) !== json(sc.bookmarks ?? [])) {
 				const others = (Array.isArray(stack.markers) ? stack.markers : []).filter((mk: J) => !ownMarker(mk));
-				stack.markers = [...others, ...((sc.bookmarks ?? []) as J[]).map((b) => {
-					const { time, ...rest } = b;
-					return { OTIO_SCHEMA: "Marker.2", name: typeof b.note === "string" ? b.note : "", marked_range: tr(time, b.duration ?? 0, TICKS), color: "RED", comment: "", metadata: { opencut: { bookmark: rest } } };
-				})];
+				stack.markers = [...others, ...bookmarkMarkers(sc)];
 			}
+		}
+		if (fresh.length || dropped.size) {
+			// A lone Timeline given a second scene becomes a collection holding it whole.
+			if (raw.OTIO_SCHEMA === "Timeline.1") raw = { OTIO_SCHEMA: "SerializableCollection.1", name: raw.name, metadata: {}, children: [raw] };
+			raw.children = [...(raw.children as J[]).filter((c) => !dropped.has(c)), ...fresh];
+		}
+		const finalRoots = timelinesOf(raw);
+		for (const sc of scenes) {
+			const at = this.sceneAt.has(sc.id) ? finalRoots.indexOf(roots[this.sceneAt.get(sc.id) as number]) : finalRoots.indexOf(fresh[freshScenes.indexOf(sc)]);
+			sceneAt.set(sc.id, at);
 		}
 		if (!base || json(p.settings ?? null) !== base.settings) raw.metadata = { ...(raw.metadata ?? {}), opencut: { ...(raw.metadata?.opencut ?? {}), settings: p.settings } };
 		return raw;
 	}
 
-	/** A Cut track as an OTIO track's children: untouched clips and gaps as their own bytes, the rest written at `rate` when exact, else in ticks. */
-	private trackChildren(t: J, was: J[], rate: number, mediaById: Map<string, CutMedia>, clips: Map<string, J>): J[] {
-		const gaps: Array<{ at: number; dur: number; raw: J }> = [];
-		let at = 0;
-		for (const c of was) {
-			const dur = toTicks(c.source_range.duration.value, c.source_range.duration.rate) ?? 0;
-			if (c.OTIO_SCHEMA === "Gap.1") gaps.push({ at, dur, raw: c });
-			at += dur;
-		}
-		const baseEls = new Map((this.base?.tracks.get(t.id) ?? []).map((s) => { const e = JSON.parse(s); return [e.id as string, s]; }));
-		const els = [...(t.elements as J[])].sort((a, b) => a.startTime - b.startTime);
-		const out: J[] = [];
-		at = 0;
-		let last: J | null = null;
-		for (const e of els) {
-			this.checkCarried(e, t, mediaById);
-			if (e.startTime < at) throw new CutSaveRefusal("overlap-not-carried", `"${last?.name}" and "${e.name}" overlap on ${t.name}; a track of this file is a sequence, so one of them must move`);
-			if (e.startTime > at) {
-				const g = e.startTime - at;
-				const same = gaps.find((x) => x.at === at && x.dur === g);
-				out.push(same ? same.raw : { OTIO_SCHEMA: "Gap.1", name: "", source_range: timeRange(0, g, rate), effects: [], markers: [], enabled: true, metadata: {} });
-			}
-			const before = this.clipOf.get(e.id);
-			const c = before && baseEls.get(e.id) === json(e) ? before : this.clip(e, before, rate, mediaById);
-			clips.set(e.id, c);
-			out.push(c);
-			at = e.startTime + e.duration;
-			last = e;
-		}
-		return out;
+	/** A scene Cut made, as a Timeline of its own in the file (as Cut writes its scenes): its tracks that hold something, its bookmarks. */
+	private timelineOf(sc: J, mediaById: Map<string, CutMedia>, clips: Map<string, J>, origins: Map<string, Origin>): J {
+		const tracks = allTracks(sc).filter((t) => (t.elements as J[]).length);
+		tracks.forEach((t, ki) => {
+			origins.set(t.id, { ki, rate: TICKS });
+		});
+		const { name: _n, tracks: _t, bookmarks: _b, id: _i, createdAt: _c, updatedAt: _u, ...scene } = sc;
+		return {
+			OTIO_SCHEMA: "Timeline.1", name: sc.name, global_start_time: null, metadata: { opencut: { scene } },
+			tracks: { OTIO_SCHEMA: "Stack.1", name: "tracks", source_range: null, effects: [], markers: bookmarkMarkers(sc), enabled: true, metadata: {}, children: tracks.map((t) => this.trackBody(t, null, TICKS, mediaById, clips)) },
+		};
 	}
 
-	private checkCarried(e: J, t: J, mediaById: Map<string, CutMedia>): void {
+	/**
+	 * A Cut track as an OTIO track: one sequence (`Track.1`) when its elements do not overlap, else Cut's stacked lanes (a `Stack.1` of
+	 * `Track.1` lanes, the fewest that hold them), each carrying the track's own data. Untouched clips and gaps are their own bytes; the rest is
+	 * written at `rate` when exact, else in ticks.
+	 */
+	private trackBody(t: J, before: J | null, rate: number, mediaById: Map<string, CutMedia>, clips: Map<string, J>): J {
+		const els = [...(t.elements as J[])].sort((a, b) => a.startTime - b.startTime);
+		for (const e of els) this.checkCarried(e, mediaById);
+		const lanes: J[][] = [];
+		for (const e of els) {
+			const free = lanes.find((l) => { const last = l[l.length - 1]; return last.startTime + last.duration <= e.startTime; });
+			if (free) free.push(e);
+			else lanes.push([e]);
+		}
+		if (!lanes.length) lanes.push([]);
+		const wasLanes: J[][] = !before ? [] : before.OTIO_SCHEMA === "Stack.1" ? (before.children as J[]).map((l) => l.children as J[]) : [before.children as J[]];
+		const baseEls = new Map((this.base?.tracks.get(t.id) ?? []).map((x) => { const e = JSON.parse(x); return [e.id as string, x]; }));
+		const laneChildren = (l: J[], was: J[]): J[] => {
+			const gaps: Array<{ at: number; dur: number; raw: J }> = [];
+			let at = 0;
+			for (const c of was) {
+				const dur = toTicks(c.source_range.duration.value, c.source_range.duration.rate) ?? 0;
+				if (c.OTIO_SCHEMA === "Gap.1") gaps.push({ at, dur, raw: c });
+				at += dur;
+			}
+			const out: J[] = [];
+			at = 0;
+			for (const e of l) {
+				if (e.startTime > at) {
+					const g = e.startTime - at;
+					const same = gaps.find((x) => x.at === at && x.dur === g);
+					out.push(same ? same.raw : { OTIO_SCHEMA: "Gap.1", name: "", source_range: timeRange(0, g, rate), effects: [], markers: [], enabled: true, metadata: {} });
+				}
+				const prior = this.clipOf.get(e.id);
+				const c = prior && baseEls.get(e.id) === json(e) ? prior : this.clip(e, prior, rate, mediaById);
+				clips.set(e.id, c);
+				out.push(c);
+				at = e.startTime + e.duration;
+			}
+			return out;
+		};
+		const kind = t.type === "audio" ? "Audio" : "Video";
+		const plain = (children: J[], metadata: J): J => ({ OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata, children });
+		if (lanes.length === 1) {
+			const children = laneChildren(lanes[0], wasLanes[0] ?? []);
+			if (before?.OTIO_SCHEMA === "Track.1") return { ...before, children };
+			return plain(children, before ? before.metadata : { opencut: { track: trackInfo(t) } });
+		}
+		const metadata = { ...(before?.metadata ?? {}), opencut: { ...(before?.metadata?.opencut ?? {}), track: { ...(before?.metadata?.opencut?.track ?? {}), ...trackInfo(t) } } };
+		return {
+			OTIO_SCHEMA: "Stack.1", name: t.name, source_range: null, effects: [], markers: [], enabled: true, metadata,
+			children: lanes.map((l, i) => ({ ...plain(laneChildren(l, wasLanes[i] ?? []), { opencut: { lane: i } }), name: `${t.name} (lane ${i + 1})` })),
+		};
+	}
+
+	private checkCarried(e: J, mediaById: Map<string, CutMedia>): void {
 		if (e.type === "audio" && e.sourceType === "library") throw new CutSaveRefusal("library-sound-off", `the library sound "${e.name}" comes from Freesound, which is off in OneOS; a sound is used only once it is a OneOS file`);
-		if (e.type !== "video" && e.type !== "image" && e.type !== "audio") throw new CutSaveRefusal("element-not-carried", `the ${e.type} "${e.name}" on ${t.name} has no place in this file's tracks, which hold clips of OneOS media (a ${e.type} is kept in a Cut project)`);
+		if (GENERATED.has(e.type)) return;
+		if (!MEDIA_TYPES.has(e.type)) throw new CutSaveRefusal("element-not-carried", `the ${String(e.type)} "${e.name}" is not an element Cut knows how to save`);
 		const m = mediaById.get(e.mediaId);
 		if (!m || !m.file || !parseMediaUrl(`oneos:file/${m.file.id}?version=${m.file.version}`)) throw new CutSaveRefusal("media-not-referenced", `the medium ${m?.name ?? e.mediaId} of "${e.name}" is not a OneOS file and version; put it in Files and insert it from there`);
 	}
 
 	private clip(e: J, before: J | undefined, trackRate: number, mediaById: Map<string, CutMedia>): J {
-		const m = mediaById.get(e.mediaId)!;
-		const url = mediaUrl(m.file.id, m.file.version);
 		const rate = before ? before.source_range.duration.rate : trackRate;
 		const range = timeRange(e.trimStart, e.duration, rate);
-		const look = extrasOf(e);
+		if (GENERATED.has(e.type)) {
+			const look = Object.fromEntries(Object.entries(e).filter(([k]) => !GENERATED_CORE.has(k)));
+			const ref = { OTIO_SCHEMA: "GeneratorReference.1", name: e.name, generator_kind: `OpenCut.${e.type}`, parameters: {}, available_range: null, metadata: {} };
+			if (before) {
+				const c = clone(before);
+				c.name = e.name;
+				c.source_range = range;
+				c.media_references.DEFAULT_MEDIA.name = e.name;
+				c.metadata = { ...(c.metadata ?? {}), opencut: { ...(c.metadata?.opencut ?? {}), element: look } };
+				return c;
+			}
+			return { OTIO_SCHEMA: "Clip.2", name: e.name, source_range: range, effects: [], markers: [], enabled: true, media_references: { DEFAULT_MEDIA: ref }, active_media_reference_key: "DEFAULT_MEDIA", metadata: { opencut: { element: look } } };
+		}
+		const m = mediaById.get(e.mediaId) as CutMedia;
+		const url = mediaUrl(m.file.id, m.file.version);
+		// Where the medium states its length, the trim's end and the source's length are read from it; else they ride with the element.
+		const derived = isObj(before?.media_references?.DEFAULT_MEDIA?.available_range);
+		const look = Object.fromEntries(Object.entries(e).filter(([k]) => !MEDIA_CORE.has(k) && !(derived && (k === "trimEnd" || k === "sourceDuration"))));
 		if (e.type === "audio") delete look.sourceType;
 		if (before) {
 			const c = clone(before);
@@ -382,13 +479,21 @@ function steady(p: J): J {
 
 const ownMarker = (m: unknown) => isObj(m) && m.OTIO_SCHEMA === "Marker.2" && isObj(m.metadata?.opencut?.bookmark) && isObj(m.marked_range?.start_time);
 const allTracks = (sc: J): J[] => [sc.tracks.main, ...sc.tracks.overlay, ...sc.tracks.audio].filter(Boolean);
-const switchesOf = (t: J) => (t.type === "audio" ? { muted: t.muted === true } : { muted: t.muted === true, hidden: t.hidden === true });
+/** A track's own data Cut keeps on it: its type and its switches. */
+const trackInfo = (t: J) => ({ type: t.type, ...switchesOf(t) });
+const bookmarkMarkers = (sc: J): J[] => ((sc.bookmarks ?? []) as J[]).map((b) => {
+	const { time, ...rest } = b;
+	return { OTIO_SCHEMA: "Marker.2", name: typeof b.note === "string" ? b.note : "", marked_range: tr(time, b.duration ?? 0, TICKS), color: "RED", comment: "", metadata: { opencut: { bookmark: rest } } };
+});
+const switchesOf = (t: J) => (t.type === "audio" ? { muted: t.muted === true } : t.type === "video" ? { muted: t.muted === true, hidden: t.hidden === true } : { hidden: t.hidden === true });
 
 /** Why a track `otio.ts` finds editable is still not one Cut may REWRITE without loss (null: it may). */
 function carriedLock(t: J): string | null {
 	if (t.enabled === false) return "it is switched off, which Cut has no switch for";
 	if (t.source_range !== null && t.source_range !== undefined) return "it is trimmed as a whole, which Cut does not show";
-	for (const c of t.children as J[]) {
+	const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
+	for (const l of lanes) if (l.enabled === false || (l.source_range !== null && l.source_range !== undefined)) return "a lane of it is switched off or trimmed, which Cut does not show";
+	for (const c of lanes.flatMap((l) => l.children as J[])) {
 		const r = c.source_range;
 		if (toTicks(r.start_time.value, r.start_time.rate) === null || toTicks(r.duration.value, r.duration.rate) === null) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" has times that are not whole ticks of Cut's clock (${TICKS}/s)`;
 		if (c.enabled === false) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" is switched off, which Cut has no switch for`;

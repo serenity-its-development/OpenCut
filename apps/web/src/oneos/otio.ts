@@ -3,9 +3,12 @@
  * writers"). Cut opens any OpenTimelineIO document (a Timeline.1, or Film's SerializableCollection.1 of a whole project), shows what it can
  * edit and CARRIES THE REST THROUGH UNTOUCHED: the document is kept as read, and a save writes it back with only Cut's edits applied.
  *
- * Editable: a Track.1 (Video or Audio) whose children are all plain `Clip.2` (one DEFAULT_MEDIA `ExternalReference.1` that is a OneOS file,
- * `oneos:file/<id>?version=<v>`; no effects, no markers) and `Gap.1`. Anything else on a track - a transition, an effect, a marker, a nested
- * stack, a generator, media that is not a OneOS file - LOCKS that track (shown, not editable, written back exactly), with the reason named.
+ * Editable: a Track.1 (Video or Audio) whose children are all plain `Clip.2` and `Gap.1`; a clip's one DEFAULT_MEDIA is an `ExternalReference.1`
+ * that is a OneOS file (`oneos:file/<id>?version=<v>`), or Cut's OWN generator (`GeneratorReference.1` of kind `OpenCut.<text|sticker|graphic|
+ * effect>` whose clip carries `metadata.opencut.element`); no effects, no markers. Cut's own stacked lanes (a `Stack.1` with
+ * `metadata.opencut.track` of `Track.1` lanes each marked `metadata.opencut.lane`) are one editable track. Anything else on a track - a
+ * transition, an effect, a marker, another tool's stack or generator, media that is not a OneOS file - LOCKS that track (shown, not editable,
+ * written back exactly), with the reason named.
  * Everything outside the tracks (Film's metadata.filmcraft.project, other tools' metadata, the stack's own markers) is never touched.
  * Refused by name only what Cut would damage: bytes that are not OpenTimelineIO, and a document its own write-back would change.
  * Pure: no DOM, no storage, no network.
@@ -32,13 +35,17 @@ export interface MediaRef { id: string; version: string }
 export interface Span { start: number; duration: number; rate: number }
 export type Item =
 	| { type: "clip"; name: string; enabled: boolean; source: Span; media: MediaRef; metadata: Json; raw: Json }
+	| { type: "generator"; name: string; enabled: boolean; source: Span; kind: string; metadata: Json; raw: Json }
 	| { type: "gap"; name: string; enabled: boolean; source: Span; metadata: Json; raw: Json };
 export interface Track {
 	kind: string;
 	name: string;
 	/** Null when Cut may edit it; else why it is locked (carried through untouched). */
 	locked: string | null;
+	/** A plain track's items; empty for Cut's stacked lanes, whose items are `lanes`. */
 	items: Item[];
+	/** Cut's own stacked lanes (a track a resize made overlap), each a sequence; null for a plain track. */
+	lanes: Item[][] | null;
 	raw: Json;
 }
 export interface Timeline { name: string; tracks: Track[]; raw: Json }
@@ -86,22 +93,53 @@ function timeline(tl: Json): Timeline {
 }
 
 function track(t: unknown, i: number): Track {
-	if (!isObj(t)) return { kind: "", name: `track ${i + 1}`, locked: "it is not an object", items: [], raw: t as Json };
+	if (!isObj(t)) return { kind: "", name: `track ${i + 1}`, locked: "it is not an object", items: [], lanes: null, raw: t as Json };
 	const name = typeof t.name === "string" ? t.name : `track ${i + 1}`;
-	const lockedTrack = (why: string): Track => ({ kind: String(t.kind ?? ""), name, locked: why, items: [], raw: t });
+	const lockedTrack = (why: string): Track => ({ kind: String(t.kind ?? ""), name, locked: why, items: [], lanes: null, raw: t });
+	if (t.OTIO_SCHEMA === "Stack.1" && isObj(t.metadata?.opencut?.track)) return laneStack(t, name, lockedTrack);
 	if (t.OTIO_SCHEMA !== "Track.1") return lockedTrack(`it is a ${String(t.OTIO_SCHEMA)} (a nested stack), which Cut carries but does not edit`);
-	if (t.kind !== "Video" && t.kind !== "Audio") return lockedTrack(`it is of kind ${String(t.kind)}`);
-	if ((Array.isArray(t.effects) && t.effects.length) || (Array.isArray(t.markers) && t.markers.length)) return lockedTrack("it has effects or markers of its own");
+	const seq = sequence(t);
+	if (typeof seq === "string") return lockedTrack(seq);
+	return { kind: t.kind, name, locked: null, items: seq, lanes: null, raw: t };
+}
+
+/** A Track.1's items when Cut may edit it, else why not. */
+function sequence(t: Json): Item[] | string {
+	if (t.kind !== "Video" && t.kind !== "Audio") return `it is of kind ${String(t.kind)}`;
+	if ((Array.isArray(t.effects) && t.effects.length) || (Array.isArray(t.markers) && t.markers.length)) return "it has effects or markers of its own";
 	const items: Item[] = [];
 	for (const c of Array.isArray(t.children) ? t.children : []) {
 		const why = editable(c);
-		if (why) return lockedTrack(why);
+		if (why) return why;
 		const source = { start: c.source_range.start_time.value, duration: c.source_range.duration.value, rate: c.source_range.duration.rate };
 		const common = { name: typeof c.name === "string" ? c.name : "", enabled: c.enabled !== false, source, metadata: isObj(c.metadata) ? c.metadata : {}, raw: c };
-		items.push(c.OTIO_SCHEMA === "Gap.1" ? { type: "gap", ...common } : { type: "clip", media: parseMediaUrl(c.media_references.DEFAULT_MEDIA.target_url)!, ...common });
+		if (c.OTIO_SCHEMA === "Gap.1") items.push({ type: "gap", ...common });
+		else if (c.media_references.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1") items.push({ type: "generator", kind: c.media_references.DEFAULT_MEDIA.generator_kind, ...common });
+		else items.push({ type: "clip", media: parseMediaUrl(c.media_references.DEFAULT_MEDIA.target_url)!, ...common });
 	}
-	return { kind: t.kind, name, locked: null, items, raw: t };
+	return items;
 }
+
+/** Cut's own stacked lanes as one editable track, or locked with the reason. */
+function laneStack(t: Json, name: string, lockedTrack: (why: string) => Track): Track {
+	if ((Array.isArray(t.effects) && t.effects.length) || (Array.isArray(t.markers) && t.markers.length)) return lockedTrack("its stack has effects or markers of its own");
+	const kids: unknown[] = Array.isArray(t.children) ? t.children : [];
+	if (!kids.length) return lockedTrack("it is a stack of no lanes");
+	const lanes: Item[][] = [];
+	let kind = "";
+	for (const [li, l] of kids.entries()) {
+		if (!isObj(l) || l.OTIO_SCHEMA !== "Track.1" || l.metadata?.opencut?.lane !== li) return lockedTrack(`it is a ${String(t.OTIO_SCHEMA)} (a nested stack) whose lane ${li + 1} is not one of Cut's`);
+		if (kind && l.kind !== kind) return lockedTrack("its lanes are of different kinds");
+		kind = l.kind;
+		const seq = sequence(l);
+		if (typeof seq === "string") return lockedTrack(`lane ${li + 1}: ${seq}`);
+		lanes.push(seq);
+	}
+	return { kind, name, locked: null, items: [], lanes, raw: t };
+}
+
+/** Cut's own generated elements (a text, sticker, graphic or effect), as Cut writes them. */
+export const OWN_GENERATOR = /^OpenCut\.(text|sticker|graphic|effect)$/;
 
 /** Why a track item is not something Cut edits (null: it is). */
 function editable(c: unknown): string | null {
@@ -114,6 +152,7 @@ function editable(c: unknown): string | null {
 	if (c.OTIO_SCHEMA === "Gap.1") return null;
 	const refs = c.media_references;
 	if (!isObj(refs) || Object.keys(refs).length !== 1 || c.active_media_reference_key !== "DEFAULT_MEDIA" || !isObj(refs.DEFAULT_MEDIA)) return `${label} has more than one media reference`;
+	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1" && OWN_GENERATOR.test(String(refs.DEFAULT_MEDIA.generator_kind)) && isObj(c.metadata?.opencut?.element)) return null;
 	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA !== "ExternalReference.1" || !parseMediaUrl(refs.DEFAULT_MEDIA.target_url)) return `${label}'s media is not a OneOS file`;
 	return null;
 }
@@ -128,20 +167,23 @@ export function encodeOtio(doc: OtioDocument): Uint8Array {
 			if (t.locked) return; // carried exactly as read
 			const rt = out.tracks.children[i];
 			rt.name = t.name;
-			rt.children = t.items.map((it) => {
-				const r = clone(it.raw);
-				r.name = it.name;
-				r.enabled = it.enabled;
-				r.metadata = clone(it.metadata);
-				r.source_range.start_time.value = it.source.start;
-				r.source_range.duration.value = it.source.duration;
-				r.source_range.start_time.rate = r.source_range.duration.rate = it.source.rate;
-				if (it.type === "clip") r.media_references.DEFAULT_MEDIA.target_url = mediaUrl(it.media.id, it.media.version);
-				return r;
-			});
+			if (t.lanes) t.lanes.forEach((lane, li) => { rt.children[li].children = lane.map(writeItem); });
+			else rt.children = t.items.map(writeItem);
 		});
 	});
 	return new TextEncoder().encode(`${JSON.stringify(raw, null, 4)}\n`);
+}
+
+function writeItem(it: Item): Json {
+	const r = clone(it.raw);
+	r.name = it.name;
+	r.enabled = it.enabled;
+	r.metadata = clone(it.metadata);
+	r.source_range.start_time.value = it.source.start;
+	r.source_range.duration.value = it.source.duration;
+	r.source_range.start_time.rate = r.source_range.duration.rate = it.source.rate;
+	if (it.type === "clip") r.media_references.DEFAULT_MEDIA.target_url = mediaUrl(it.media.id, it.media.version);
+	return r;
 }
 
 /** The Create blank: an empty timeline at 30 fps with one video and one audio track. */
