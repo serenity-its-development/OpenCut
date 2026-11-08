@@ -61,6 +61,8 @@ export class ProjectManager {
 	constructor(private editor: EditorCore) {}
 
 	private async ensureStorageMigrations(): Promise<void> {
+		// OneOS host mode keeps the project in memory: there is no stored project to migrate (and no IndexedDB to touch).
+		if (storageService.isMemory()) return;
 		if (this.storageMigrationPromise) {
 			await this.storageMigrationPromise;
 			return;

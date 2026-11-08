@@ -1,20 +1,29 @@
 /**
- * The OneOS host bridge for Cut (doctrine files/016, files/999): `postMessage` to the ONE parent the frame page declared.
+ * The OneOS host bridge for Cut (doctrine files/016, files/989): `postMessage` to the ONE parent the frame page declared.
  *
  * The frame page's loader sets `globalThis.__craftHost = {app, version, parent}`; the editor lives on its own origin, so the parent is a
  * DIFFERENT origin. Messages go to that origin only, and only that window on that origin is heard; a message of another session, of a
  * wrong shape, or over the bound is dropped.
  *
  * - `craft:ready {app, version}` (to the parent): listening; send the file now.
- * - `craft:open {session, name, mime, bytes, versionId, readOnly}` (from the parent): the `.ocproj` to open (an ArrayBuffer).
+ * - `craft:open {session, name, mime, bytes, versionId, readOnly}` (from the parent): the `.otio` to open (an ArrayBuffer).
  * - `craft:dirty {session, dirty}` (to the parent): unsaved changes appeared or went away.
  * - `craft:save {session, name, mime, bytes, baseVersionId, saveAs}` (to the parent): the person saved; the bytes are transferred. The host
  *   makes a NEW version through the compare-and-set on the version it opened and answers `craft:saved {session, versionId}` or
  *   `craft:refused {session, code, reason}`. An export (MP4/WebM) goes with `saveAs: true`: a new file beside the project, never the project.
  * - `craft:failed {error}` (to the parent): the editor could not start, or the file was refused (by name).
+ * - `craft:medium:need {session, id, url}` (to the parent): the bytes of a medium the project uses, named by its OneOS reference
+ *   `oneos:file/<file id>?version=<version>` (files/989). The host reads it as the person, through the storage proxy, and answers
+ *   `craft:medium:data {session, id, url, name, mime, bytes, versionId}` (that exact version) or `{session, id, url, code, reason}`.
  *
  * There is no network call here: the bytes arrive and leave only as these messages.
  */
+import { parseMediaUrl } from "./otio.ts";
+
+/** The most bytes one medium may carry into the frame (the host states the same bound). */
+export const MEDIUM_MAX_BYTES = 2 * 1024 * 1024 * 1024 - 1;
+
+export type MediumAnswer = { ok: true; name: string; mime: string; bytes: Uint8Array<ArrayBuffer>; versionId: string } | { ok: false; code: string; reason: string };
 
 
 export interface HostDeclared {
@@ -61,10 +70,12 @@ export class HostBridge {
 	private opened: Opened | null = null;
 	private lastDirty: boolean | null = null;
 	private saving: { resolve: (a: SaveAnswer) => void; saveAs: boolean } | null = null;
+	private readonly media = new Map<string, { url: string; version: string; resolve: (a: MediumAnswer) => void }>();
+	private nextMedium = 0;
 	private readonly win: BridgeWindow;
 	private readonly declared: HostDeclared;
 	private readonly onOpen: (o: Opened) => void;
-	/** The project's own type (a save of the project is this mime) and the most bytes an open may carry: `ocproj.ts`'s. */
+	/** The project's own type (a save of the project is this mime) and the most bytes an open may carry: `otio.ts`'s. */
 	private readonly projectMime: string;
 	private readonly maxBytes: number;
 
@@ -112,6 +123,20 @@ export class HostBridge {
 		});
 	}
 
+	/** The bytes of a medium the project uses, asked of the host by its OneOS reference; anything else is refused here, by name, unasked. */
+	medium(url: string): Promise<MediumAnswer> {
+		const o = this.opened;
+		if (!o) return Promise.resolve({ ok: false, code: "craft-nothing-open", reason: "no file is open from the host" });
+		const ref = parseMediaUrl(url);
+		if (!ref) return Promise.resolve({ ok: false, code: "media-not-referenced", reason: `${url} is not a OneOS file and version (oneos:file/<id>?version=<v>)` });
+		this.nextMedium += 1;
+		const id = `m${this.nextMedium}`;
+		return new Promise((resolve) => {
+			this.media.set(id, { url, version: ref.version, resolve });
+			this.post({ type: "craft:medium:need", session: o.session, id, url });
+		});
+	}
+
 	private post(message: Record<string, unknown>, transfer?: Transferable[]): void {
 		this.win.parent?.postMessage(message, this.declared.parent, transfer);
 	}
@@ -126,10 +151,28 @@ export class HostBridge {
 			if (m.bytes.byteLength > this.maxBytes) return;
 			this.opened = { session: m.session, name: m.name, bytes: new Uint8Array(m.bytes), versionId: m.versionId, readOnly: m.readOnly };
 			this.lastDirty = null;
+			// A medium asked of an earlier open is never answered into this one.
+			for (const w of this.media.values()) w.resolve({ ok: false, code: "craft-reopened", reason: "another file was opened" });
+			this.media.clear();
 			this.onOpen(this.opened);
 			return;
 		}
 		if (!this.opened || m.session !== this.opened.session) return;
+		if (m.type === "craft:medium:data") {
+			const w = typeof m.id === "string" ? this.media.get(m.id) : undefined;
+			if (!w || m.url !== w.url) return;
+			this.media.delete(m.id as string);
+			if (typeof m.code === "string") {
+				w.resolve({ ok: false, code: m.code, reason: typeof m.reason === "string" ? m.reason : m.code });
+			} else if (!(m.bytes instanceof ArrayBuffer) || m.bytes.byteLength > MEDIUM_MAX_BYTES || typeof m.name !== "string" || typeof m.mime !== "string") {
+				w.resolve({ ok: false, code: "media-unreadable", reason: `the host's answer for ${w.url} is not a medium` });
+			} else if (m.versionId !== w.version) {
+				w.resolve({ ok: false, code: "media-version-mismatch", reason: `the host read version ${String(m.versionId)}, not ${w.version}` });
+			} else {
+				w.resolve({ ok: true, name: m.name, mime: m.mime, bytes: new Uint8Array(m.bytes), versionId: w.version });
+			}
+			return;
+		}
 		if (m.type === "craft:saved" && typeof m.versionId === "string" && m.versionId) {
 			const done = this.saving;
 			this.saving = null;

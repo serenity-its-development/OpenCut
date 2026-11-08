@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { TransitionTopIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { hostMode } from "@/oneos/host-mode";
+import { toast } from "sonner";
 import {
 	Popover,
 	PopoverContent,
@@ -129,11 +131,19 @@ function ExportPopover({
 		}
 
 		if (result.success && result.buffer) {
-			downloadBuffer({
-				buffer: result.buffer,
-				filename: `${activeProject.metadata.name}${getExportFileExtension({ format })}`,
-				mimeType: getExportMimeType({ format }),
-			});
+			const filename = `${activeProject.metadata.name}${getExportFileExtension({ format })}`;
+			const mimeType = getExportMimeType({ format });
+			// Inside OneOS an export is a NEW file beside the project, through the host (files/989); never a download, never the project.
+			const host = hostMode();
+			if (host) {
+				const saved = await host.exportBeside(filename, mimeType, result.buffer);
+				if (!saved.ok) {
+					toast.error(`The export was not saved: ${saved.reason}`);
+					return;
+				}
+			} else {
+				downloadBuffer({ buffer: result.buffer, filename, mimeType });
+			}
 
 			editor.project.clearExportState();
 			onOpenChange(false);

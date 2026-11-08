@@ -3,6 +3,7 @@ import { getProjectDurationFromScenes } from "@/timeline/scenes";
 import type { MediaAsset } from "@/media/types";
 import { IndexedDBAdapter } from "./indexeddb-adapter";
 import { OPFSAdapter } from "./opfs-adapter";
+import { MemoryAdapter } from "./memory-adapter";
 import {
 	type StorageCapacityCheckResult,
 	StorageQuotaExceededError,
@@ -52,8 +53,10 @@ function normalizeBookmarks({ raw }: { raw: unknown }): Bookmark[] {
 }
 
 class StorageService {
-	private projectsAdapter: IndexedDBAdapter<SerializedProject>;
-	private savedSoundsAdapter: IndexedDBAdapter<SavedSoundsData>;
+	private projectsAdapter: IndexedDBAdapter<SerializedProject> | MemoryAdapter<SerializedProject>;
+	private savedSoundsAdapter: IndexedDBAdapter<SavedSoundsData> | MemoryAdapter<SavedSoundsData>;
+	/** OneOS host mode: every project and medium in this window's memory, nothing in the browser's storage (`holdInMemory`). */
+	private memoryMedia: Map<string, { mediaMetadataAdapter: MemoryAdapter<MediaAssetData>; mediaAssetsAdapter: MemoryAdapter<File> }> | null = null;
 	private config: StorageConfig;
 	private migrationsPromise: Promise<void> | null = null;
 
@@ -78,7 +81,29 @@ class StorageService {
 		);
 	}
 
+	/**
+	 * OneOS host mode (files/989): from now on this window keeps its project and media in memory only. The file is the host's and a save
+	 * goes to the host; nothing is written to, or read from, IndexedDB or OPFS. Called once, before anything is stored.
+	 */
+	holdInMemory(): void {
+		if (this.memoryMedia) return;
+		this.projectsAdapter = new MemoryAdapter<SerializedProject>();
+		this.savedSoundsAdapter = new MemoryAdapter<SavedSoundsData>();
+		this.memoryMedia = new Map();
+	}
+
+	isMemory(): boolean {
+		return this.memoryMedia !== null;
+	}
+
+	/** The project exactly as stored (dates as text, audio buffers stripped): what host mode measures and saves. */
+	async loadSerializedProject({ id }: { id: string }): Promise<SerializedProject | null> {
+		return await this.projectsAdapter.get(id);
+	}
+
 	private async ensureMigrations(): Promise<void> {
+		// In memory there is no stored project of an older version to migrate.
+		if (this.memoryMedia) return;
 		if (this.migrationsPromise) {
 			await this.migrationsPromise;
 			return;
@@ -91,6 +116,14 @@ class StorageService {
 	}
 
 	private getProjectMediaAdapters({ projectId }: { projectId: string }) {
+		if (this.memoryMedia) {
+			let held = this.memoryMedia.get(projectId);
+			if (!held) {
+				held = { mediaMetadataAdapter: new MemoryAdapter<MediaAssetData>(), mediaAssetsAdapter: new MemoryAdapter<File>() };
+				this.memoryMedia.set(projectId, held);
+			}
+			return held;
+		}
 		const mediaMetadataAdapter = new IndexedDBAdapter<MediaAssetData>(
 			`${this.config.mediaDb}-${projectId}`,
 			"media-metadata",
@@ -107,6 +140,8 @@ class StorageService {
 	}: {
 		size: number;
 	}): Promise<StorageCapacityCheckResult> {
+		// In host mode a medium is held in memory, never in the browser's storage quota.
+		if (this.memoryMedia) return { canStore: true, reason: "estimate-unavailable", availableBytes: null };
 		const quotaStatus = await readStorageQuotaStatus();
 		return evaluateStorageCapacity({
 			requiredBytes: size,
