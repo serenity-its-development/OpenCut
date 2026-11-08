@@ -22,10 +22,11 @@
 import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMediaUrl, sameValue, type MediaRef, type OtioDocument } from "./otio.ts";
 import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cut-otio.ts";
 import { carry, foreignOf, type Foreign } from "./foreign.ts";
+import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./film-look.ts";
 
 type J = Record<string, any>;
 
-export type CutSaveCode = "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
+export type CutSaveCode = "keyframes-not-in-film" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
 
 export class CutSaveRefusal extends Error {
 	readonly code: CutSaveCode;
@@ -85,8 +86,8 @@ function readRaw(name: string, bytes: Uint8Array): J {
 
 const isCutProject = (raw: J) => raw.OTIO_SCHEMA === "SerializableCollection.1" && isObj(raw.metadata) && isObj(raw.metadata.opencut) && isObj(raw.metadata.opencut.project);
 
-/** Where a carried Cut track sits: its index in its timeline's stack, and the rate its own clips are timed at. */
-interface Origin { ki: number; rate: number }
+/** Where a carried Cut track sits: its index in its timeline's stack, the rate its own clips are timed at, and the frame of Film's sequence it is on. */
+interface Origin { ki: number; rate: number; frame: Frame | null }
 
 export class CutSession {
 	readonly mode: "cut" | "carried";
@@ -156,8 +157,9 @@ export class CutSession {
 		const scenes = doc.timelines.map((tl, ti) => {
 			const sceneId = `otio-t${ti}`;
 			const tracks = { main: null as J | null, overlay: [] as J[], audio: [] as J[] };
+			const frame = filmFrame(tl.raw);
 			tl.tracks.forEach((t, ki) => {
-				const why = t.locked ?? carriedLock(t.raw);
+				const why = t.locked ?? carriedLock(t.raw) ?? filmLock(t.raw, frame, t.kind === "Audio");
 				if (why) { locked.push({ scene: tl.name, track: t.name, reason: why }); return; }
 				const trackId = `${sceneId}-k${ki}`;
 				const audio = t.kind === "Audio";
@@ -187,6 +189,12 @@ export class CutSession {
 							// A Film clip's gain (metadata.filmcraft.gain_db) IS Cut's volume: both are decibels, so Cut edits Film's own value.
 							const gain = filmGain(it.raw);
 							if (gain !== null) look.volume = gain;
+							// Film's look on its clip (Motion, Opacity, Gaussian Blur, keyframes) IS the element's: Cut edits Film's own values.
+							if (filmEffects(it.raw) && frame) {
+								const kind = audio ? "audio" : look.type === "image" ? "image" : "video";
+								for (const k of FILM_OWNED(kind)) delete look[k];
+								Object.assign(look, filmLook(it.raw, kind, frame, gain ?? 0) as J);
+							}
 							elements.push({
 								...look, id, type: audio ? "audio" : "video", ...(audio ? { sourceType: look.sourceType ?? "upload" } : {}), name: it.name, mediaId: key,
 								startTime: at, duration: dur, trimStart: start, ...placed,
@@ -195,7 +203,7 @@ export class CutSession {
 						at += dur;
 					});
 				});
-				origins.set(trackId, { ki, rate: lanes.flat()[0]?.source.rate ?? 30 });
+				origins.set(trackId, { ki, rate: lanes.flat()[0]?.source.rate ?? 30, frame });
 				const cutTrack = type === "audio"
 					? { id: trackId, name: t.name, type, muted, elements }
 					: type === "video"
@@ -319,7 +327,7 @@ export class CutSession {
 				const elementsSame = was !== undefined && json((t.elements as J[]).map(json)) === json(was);
 				if (origin) {
 					const before = kept[origin.ki] as J;
-					const out = elementsSame ? before : this.trackBody(t, before, origin.rate, mediaById, clips);
+					const out = elementsSame ? before : this.trackBody(t, before, origin.rate, mediaById, clips, origin.frame);
 					if (!base || base.names.get(t.id) !== t.name) out.name = t.name;
 					if (!base || base.switches.get(t.id) !== json(switchesOf(t))) {
 					if (filmSwitch(out) !== null) {
@@ -330,7 +338,7 @@ export class CutSession {
 				}
 					kept[origin.ki] = out;
 				} else if ((t.elements as J[]).length) {
-					added.push({ id: t.id, track: this.trackBody(t, null, TICKS, mediaById, clips) });
+					added.push({ id: t.id, track: this.trackBody(t, null, TICKS, mediaById, clips, null) });
 				}
 			}
 			// A track of the file Cut no longer holds was removed by the person (a locked one is never in Cut's hands, so never removed).
@@ -344,7 +352,7 @@ export class CutSession {
 			for (const [k, o] of mine) if (!removed.has(o.ki)) origins.set(k, { ...o, ki: shift(o.ki) });
 			const survivors = kept.filter((x): x is J => x !== null);
 			added.forEach((a, i) => {
-				origins.set(a.id, { ki: survivors.length + i, rate: TICKS });
+				origins.set(a.id, { ki: survivors.length + i, rate: TICKS, frame: null });
 			});
 			stack.children = [...survivors, ...added.map((a) => a.track)];
 			if (!base || base.bookmarks.get(sc.id) !== json(sc.bookmarks ?? [])) {
@@ -370,12 +378,12 @@ export class CutSession {
 	private timelineOf(sc: J, mediaById: Map<string, CutMedia>, clips: Map<string, J>, origins: Map<string, Origin>): J {
 		const tracks = allTracks(sc).filter((t) => (t.elements as J[]).length);
 		tracks.forEach((t, ki) => {
-			origins.set(t.id, { ki, rate: TICKS });
+			origins.set(t.id, { ki, rate: TICKS, frame: null });
 		});
 		const { name: _n, tracks: _t, bookmarks: _b, id: _i, createdAt: _c, updatedAt: _u, ...scene } = sc;
 		return {
 			OTIO_SCHEMA: "Timeline.1", name: sc.name, global_start_time: null, metadata: { opencut: { scene } },
-			tracks: { OTIO_SCHEMA: "Stack.1", name: "tracks", source_range: null, effects: [], markers: bookmarkMarkers(sc), enabled: true, metadata: {}, children: tracks.map((t) => this.trackBody(t, null, TICKS, mediaById, clips)) },
+			tracks: { OTIO_SCHEMA: "Stack.1", name: "tracks", source_range: null, effects: [], markers: bookmarkMarkers(sc), enabled: true, metadata: {}, children: tracks.map((t) => this.trackBody(t, null, TICKS, mediaById, clips, null)) },
 		};
 	}
 
@@ -384,7 +392,7 @@ export class CutSession {
 	 * `Track.1` lanes, the fewest that hold them), each carrying the track's own data. Untouched clips and gaps are their own bytes; the rest is
 	 * written at `rate` when exact, else in ticks.
 	 */
-	private trackBody(t: J, before: J | null, rate: number, mediaById: Map<string, CutMedia>, clips: Map<string, J>): J {
+	private trackBody(t: J, before: J | null, rate: number, mediaById: Map<string, CutMedia>, clips: Map<string, J>, frame: Frame | null): J {
 		const els = [...(t.elements as J[])].sort((a, b) => a.startTime - b.startTime);
 		for (const e of els) this.checkCarried(e, mediaById);
 		const lanes: J[][] = [];
@@ -413,7 +421,8 @@ export class CutSession {
 					out.push(same ? same.raw : { OTIO_SCHEMA: "Gap.1", name: "", source_range: timeRange(0, g, rate), effects: [], markers: [], enabled: true, metadata: {} });
 				}
 				const prior = this.clipOf.get(e.id);
-				const c = prior && baseEls.get(e.id) === json(e) ? prior : this.clip(e, prior, rate, mediaById);
+				const was = baseEls.get(e.id);
+				const c = prior && was === json(e) ? prior : this.clip(e, prior, rate, mediaById, was ? JSON.parse(was) : null, frame);
 				clips.set(e.id, c);
 				out.push(c);
 				at = e.startTime + e.duration;
@@ -442,7 +451,7 @@ export class CutSession {
 		if (!m || !m.file || !parseMediaUrl(`oneos:file/${m.file.id}?version=${m.file.version}`)) throw new CutSaveRefusal("media-not-referenced", `the medium ${m?.name ?? e.mediaId} of "${e.name}" is not a OneOS file and version; put it in Files and insert it from there`);
 	}
 
-	private clip(e: J, before: J | undefined, trackRate: number, mediaById: Map<string, CutMedia>): J {
+	private clip(e: J, before: J | undefined, trackRate: number, mediaById: Map<string, CutMedia>, was: J | null, frame: Frame | null): J {
 		const rate = before ? before.source_range.duration.rate : trackRate;
 		const range = timeRange(e.trimStart, e.duration, rate);
 		if (GENERATED.has(e.type)) {
@@ -470,9 +479,21 @@ export class CutSession {
 			c.source_range = range;
 			c.media_references.DEFAULT_MEDIA.target_url = url;
 			// Film's clip: its volume is Film's gain, written as Film's own value (never a second volume of Cut's beside it).
-			if (filmGain(before) !== null) {
+			const gainWas = filmGain(before);
+			if (gainWas !== null) {
 				c.metadata.filmcraft = { ...c.metadata.filmcraft, gain_db: typeof e.volume === "number" ? e.volume : 0 };
 				delete look.volume;
+			}
+			// Film's look on its clip: what Cut changed is written in Film's shape (its effects and their keyframes), never as Cut's own beside it.
+			if (filmEffects(before) && frame && was) {
+				const kind = e.type === "audio" ? "audio" : e.type === "image" ? "image" : "video";
+				const gain = typeof e.volume === "number" ? e.volume : 0;
+				// Film's volume keyframes are dB over the clip's gain: a new gain moves them so the sound Cut set stays.
+				const wasAt = gainWas !== null && gainWas !== gain ? { ...was, animations: undefined } : was;
+				const effects = writeFilmLook(before, kind, frame, gain, wasAt, e);
+				if (typeof effects === "string") throw new CutSaveRefusal("keyframes-not-in-film", effects.replace(/^keyframes-not-in-film: /, ""));
+				c.metadata.filmcraft = { ...c.metadata.filmcraft, effects };
+				for (const k of FILM_OWNED(kind)) delete look[k];
 			}
 			c.metadata = { ...(c.metadata ?? {}), opencut: { ...(c.metadata?.opencut ?? {}), element: look } };
 			return c;
@@ -521,6 +542,25 @@ function filmGain(c: J): number | null {
 function filmSwitch(t: J): boolean | null {
 	const m = isObj(t?.metadata?.filmcraft) ? t.metadata.filmcraft.muted : undefined;
 	return typeof m === "boolean" ? m : null;
+}
+
+/** The frame of Film's sequence a timeline is (its width and height), or null when Film did not write it. */
+function filmFrame(tl: J): Frame | null {
+	const s = tl?.metadata?.filmcraft?.settings;
+	return isObj(s) && typeof s.width === "number" && typeof s.height === "number" ? { w: s.width, h: s.height } : null;
+}
+
+/** Why Film's look on a clip of the track is not one Cut can show and write back (null: it can, or the track holds no Film clip). */
+function filmLock(t: J, frame: Frame | null, audio: boolean): string | null {
+	const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
+	for (const c of lanes.flatMap((l) => (Array.isArray(l.children) ? l.children : []) as J[])) {
+		if (c?.OTIO_SCHEMA !== "Clip.2" || !filmEffects(c)) continue;
+		if (!frame) return `Film's clip "${c.name ?? ""}" is on a timeline whose frame size Film did not write`;
+		const kind = audio ? "audio" : c.metadata?.opencut?.element?.type === "image" ? "image" : "video";
+		const look = filmLook(c, kind, frame, filmGain(c) ?? 0);
+		if (typeof look === "string") return look;
+	}
+	return null;
 }
 
 /** Why a track `otio.ts` finds editable is still not one Cut may REWRITE without loss (null: it may). */

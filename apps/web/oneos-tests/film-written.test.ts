@@ -18,7 +18,7 @@ function load(s: CutSession) {
 	const p = JSON.parse(JSON.stringify(s.project));
 	for (const sc of p.scenes) for (const t of [sc.tracks.main, ...sc.tracks.overlay, ...sc.tracks.audio]) for (const e of t.elements) {
 		if (e.type === "audio") e.volume ??= 0; // the editor's default: 0 dB (timeline/defaults.ts)
-		else Object.assign(e, { transform: e.transform ?? { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: e.opacity ?? 1 });
+		else Object.assign(e, { transform: e.transform ?? { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: e.opacity ?? 1 });
 	}
 	s.baseline(p, s.media);
 	return p;
@@ -39,7 +39,7 @@ test("an edit Cut makes to Film's file is pinned as the file Film opens next (cu
 	const main = p.scenes[0].tracks.main;
 	main.elements[0].duration -= TICKS / 2;
 	p.scenes[0].tracks.overlay.push({ id: "titles", name: "Titles", type: "text", hidden: false, elements: [
-		{ id: "t1", type: "text", name: "Title", content: "Trip", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: 1, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 },
+		{ id: "t1", type: "text", name: "Title", content: "Trip", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: 1, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 },
 	] });
 	p.scenes.push({ id: "teaser", name: "Teaser", isMain: false, createdAt: "2026-11-09T00:00:00.000Z", updatedAt: "2026-11-09T00:00:00.000Z", bookmarks: [{ time: TICKS, note: "hook" }],
 		tracks: { main: { ...JSON.parse(JSON.stringify(main)), id: "teaser-main", elements: main.elements.slice(0, 1).map((e: object) => ({ ...e, id: "tz1", startTime: 0 })) }, overlay: [], audio: [] } });

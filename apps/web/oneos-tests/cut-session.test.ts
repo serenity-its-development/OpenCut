@@ -47,7 +47,7 @@ function filmDoc() {
 function load(s: CutSession) {
 	const p = copy(s.project);
 	for (const sc of p.scenes) for (const t of [sc.tracks.main, ...sc.tracks.overlay, ...sc.tracks.audio]) for (const e of t.elements) {
-		if (e.type !== "audio") Object.assign(e, { transform: e.transform ?? { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: e.opacity ?? 1 });
+		if (e.type !== "audio") Object.assign(e, { transform: e.transform ?? { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: e.opacity ?? 1 });
 		else e.volume ??= 0; // the editor's default: 0 dB (timeline/defaults.ts)
 	}
 	s.baseline(p, s.media);
@@ -145,7 +145,7 @@ test("a new medium placed in a carried project is saved as a OneOS file; one tha
 	const s = CutSession.open("trip.otio", enc(filmDoc()));
 	const p = load(s);
 	const media = [...s.media, { id: "new", name: "drone.mp4", type: "video", file: { id: "01jabcdefghjkmnpqrstvwxyz8", version: "v1" } }];
-	p.scenes[0].tracks.main.elements.push({ id: "e-new", type: "video", name: "drone", mediaId: "new", startTime: 6 * TICKS, duration: TICKS, trimStart: 0, trimEnd: 0, transform: { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: 1 });
+	p.scenes[0].tracks.main.elements.push({ id: "e-new", type: "video", name: "drone", mediaId: "new", startTime: 6 * TICKS, duration: TICKS, trimStart: 0, trimEnd: 0, transform: { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: 1 });
 	const out = dec(s.save(p, media));
 	const kids = out.children[0].tracks.children[0].children;
 	assert.equal(kids.at(-1).media_references.DEFAULT_MEDIA.target_url, mediaUrl("01jabcdefghjkmnpqrstvwxyz8", "v1"));
@@ -155,7 +155,7 @@ test("a new medium placed in a carried project is saved as a OneOS file; one tha
 });
 
 /** A text element, a sticker and an effect as the editor makes them. */
-const text = (id: string, start: number) => ({ id, type: "text", name: "Title", content: "Hello", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: 1, startTime: start, duration: TICKS, trimStart: 0, trimEnd: 0 });
+const text = (id: string, start: number) => ({ id, type: "text", name: "Title", content: "Hello", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: 1, startTime: start, duration: TICKS, trimStart: 0, trimEnd: 0 });
 
 test("Cut's own elements, scenes and overlaps are saved INTO a carried file as Cut saves them (one format holds both), and reopen editable", () => {
 	const src = filmDoc();
@@ -167,7 +167,7 @@ test("Cut's own elements, scenes and overlaps are saved INTO a carried file as C
 	p.scenes[0].tracks.main.elements[1].startTime = 2 * TICKS;
 	p.scenes.push({ id: "s-new", name: "Teaser", isMain: false, createdAt: "2026-11-09T00:00:00.000Z", updatedAt: "2026-11-09T00:00:00.000Z", bookmarks: [{ time: TICKS, note: "hook" }], tracks: {
 		main: { id: "s-new-main", name: "Main", type: "video", muted: false, hidden: false, elements: [{ ...p.scenes[0].tracks.main.elements[0], id: "n1", startTime: 0 }] },
-		overlay: [{ id: "s-new-gfx", name: "Stickers", type: "graphic", hidden: false, elements: [{ id: "g1", type: "sticker", name: "Star", stickerId: "emoji:star", transform: { position: { x: 1, y: 2 }, scale: 1, rotate: 0, flipX: false }, opacity: 0.5, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 }] }],
+		overlay: [{ id: "s-new-gfx", name: "Stickers", type: "graphic", hidden: false, elements: [{ id: "g1", type: "sticker", name: "Star", stickerId: "emoji:star", transform: { scaleX: 1, scaleY: 1, position: { x: 1, y: 2 }, rotate: 0 }, opacity: 0.5, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 }] }],
 		audio: [],
 	} });
 	const out = dec(s.save(p, s.media));
