@@ -162,6 +162,8 @@ export class CutSession {
 				const trackId = `${sceneId}-k${ki}`;
 				const audio = t.kind === "Audio";
 				const own = isObj(t.raw.metadata?.opencut?.track) ? t.raw.metadata.opencut.track : {};
+				// A Film track's mute is Film's own switch (metadata.filmcraft.muted): Cut edits THAT switch, never a second one of its own.
+				const muted = filmSwitch(t.raw) ?? own.muted === true;
 				const type: string = TRACK_TYPES.has(own.type) ? own.type : audio ? "audio" : "video";
 				const elements: J[] = [];
 				const lanes = t.lanes ?? [t.items];
@@ -182,6 +184,9 @@ export class CutSession {
 							if (!media.some((m) => m.id === key)) media.push({ id: key, name: typeof ref.name === "string" && ref.name ? ref.name : it.name, type: audio ? "audio" : "video", file: { id: it.media.id, version: it.media.version } });
 							const avail = isObj(ref.available_range) ? toTicks(ref.available_range.duration?.value, ref.available_range.duration?.rate) : null;
 							const placed = avail === null ? { trimEnd: look.trimEnd ?? 0 } : { trimEnd: Math.max(0, avail - start - dur), sourceDuration: avail };
+							// A Film clip's gain (metadata.filmcraft.gain_db) IS Cut's volume: both are decibels, so Cut edits Film's own value.
+							const gain = filmGain(it.raw);
+							if (gain !== null) look.volume = gain;
 							elements.push({
 								...look, id, type: audio ? "audio" : "video", ...(audio ? { sourceType: look.sourceType ?? "upload" } : {}), name: it.name, mediaId: key,
 								startTime: at, duration: dur, trimStart: start, ...placed,
@@ -192,9 +197,9 @@ export class CutSession {
 				});
 				origins.set(trackId, { ki, rate: lanes.flat()[0]?.source.rate ?? 30 });
 				const cutTrack = type === "audio"
-					? { id: trackId, name: t.name, type, muted: own.muted === true, elements }
+					? { id: trackId, name: t.name, type, muted, elements }
 					: type === "video"
-						? { id: trackId, name: t.name, type, muted: own.muted === true, hidden: own.hidden === true, elements }
+						? { id: trackId, name: t.name, type, muted, hidden: own.hidden === true, elements }
 						: { id: trackId, name: t.name, type, hidden: own.hidden === true, elements };
 				if (type === "audio") tracks.audio.push(cutTrack);
 				else if (type === "video" && !tracks.main) tracks.main = cutTrack;
@@ -316,7 +321,13 @@ export class CutSession {
 					const before = kept[origin.ki] as J;
 					const out = elementsSame ? before : this.trackBody(t, before, origin.rate, mediaById, clips);
 					if (!base || base.names.get(t.id) !== t.name) out.name = t.name;
-					if (!base || base.switches.get(t.id) !== json(switchesOf(t))) out.metadata = { ...out.metadata, opencut: { ...(out.metadata?.opencut ?? {}), track: trackInfo(t) } };
+					if (!base || base.switches.get(t.id) !== json(switchesOf(t))) {
+					if (filmSwitch(out) !== null) {
+						// Film's track: its mute is written as Film's own switch; Cut keeps only what Film has no place for (its type, hidden).
+						const { muted, ...rest } = trackInfo(t) as J;
+						out.metadata = { ...out.metadata, filmcraft: { ...out.metadata.filmcraft, muted }, opencut: { ...(out.metadata?.opencut ?? {}), track: rest } };
+					} else out.metadata = { ...out.metadata, opencut: { ...(out.metadata?.opencut ?? {}), track: trackInfo(t) } };
+				}
 					kept[origin.ki] = out;
 				} else if ((t.elements as J[]).length) {
 					added.push({ id: t.id, track: this.trackBody(t, null, TICKS, mediaById, clips) });
@@ -458,6 +469,11 @@ export class CutSession {
 			c.name = e.name;
 			c.source_range = range;
 			c.media_references.DEFAULT_MEDIA.target_url = url;
+			// Film's clip: its volume is Film's gain, written as Film's own value (never a second volume of Cut's beside it).
+			if (filmGain(before) !== null) {
+				c.metadata.filmcraft = { ...c.metadata.filmcraft, gain_db: typeof e.volume === "number" ? e.volume : 0 };
+				delete look.volume;
+			}
 			c.metadata = { ...(c.metadata ?? {}), opencut: { ...(c.metadata?.opencut ?? {}), element: look } };
 			return c;
 		}
@@ -494,6 +510,19 @@ const bookmarkMarkers = (sc: J): J[] => ((sc.bookmarks ?? []) as J[]).map((b) =>
 });
 const switchesOf = (t: J) => (t.type === "audio" ? { muted: t.muted === true } : t.type === "video" ? { muted: t.muted === true, hidden: t.hidden === true } : { hidden: t.hidden === true });
 
+/** Cut's volume range, in decibels (timeline/audio-constants.ts). */
+const VOLUME_DB = { min: -60, max: 20 };
+/** A Film clip's gain in decibels (metadata.filmcraft.gain_db), or null when the clip is not Film's. */
+function filmGain(c: J): number | null {
+	const g = isObj(c?.metadata?.filmcraft) ? c.metadata.filmcraft.gain_db : undefined;
+	return typeof g === "number" && Number.isFinite(g) ? g : null;
+}
+/** A Film track's mute (metadata.filmcraft.muted), or null when the track is not Film's. */
+function filmSwitch(t: J): boolean | null {
+	const m = isObj(t?.metadata?.filmcraft) ? t.metadata.filmcraft.muted : undefined;
+	return typeof m === "boolean" ? m : null;
+}
+
 /** Why a track `otio.ts` finds editable is still not one Cut may REWRITE without loss (null: it may). */
 function carriedLock(t: J): string | null {
 	if (t.enabled === false) return "it is switched off, which Cut has no switch for";
@@ -504,6 +533,8 @@ function carriedLock(t: J): string | null {
 		const r = c.source_range;
 		if (toTicks(r.start_time.value, r.start_time.rate) === null || toTicks(r.duration.value, r.duration.rate) === null) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" has times that are not whole ticks of Cut's clock (${TICKS}/s)`;
 		if (c.enabled === false) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" is switched off, which Cut has no switch for`;
+		const g = filmGain(c);
+		if (g !== null && (g < VOLUME_DB.min || g > VOLUME_DB.max)) return `Film's gain of ${g} dB on "${c.name ?? ""}" is outside Cut's volume range (${VOLUME_DB.min} to ${VOLUME_DB.max} dB)`;
 		if (c.OTIO_SCHEMA === "Gap.1" && ((typeof c.name === "string" && c.name) || (isObj(c.metadata) && Object.keys(c.metadata).length))) return "a gap carries data of its own, which a rewrite of the track would not keep";
 	}
 	return null;

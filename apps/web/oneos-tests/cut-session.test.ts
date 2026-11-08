@@ -48,7 +48,7 @@ function load(s: CutSession) {
 	const p = copy(s.project);
 	for (const sc of p.scenes) for (const t of [sc.tracks.main, ...sc.tracks.overlay, ...sc.tracks.audio]) for (const e of t.elements) {
 		if (e.type !== "audio") Object.assign(e, { transform: e.transform ?? { position: { x: 0, y: 0 }, scale: 1, rotate: 0, flipX: false }, opacity: e.opacity ?? 1 });
-		else e.volume ??= 1;
+		else e.volume ??= 0; // the editor's default: 0 dB (timeline/defaults.ts)
 	}
 	s.baseline(p, s.media);
 	return p;
