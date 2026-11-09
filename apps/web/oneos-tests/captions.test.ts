@@ -129,3 +129,54 @@ test("a Cut project's caption track is written in Film's shape and read back who
 	const back = otioToCut(JSON.parse(JSON.stringify(doc)));
 	assert.deepEqual(back.project.scenes[0].tracks.overlay[0], project.scenes[0].tracks.overlay[0], "the caption track read back whole (ids and a name that is not its text kept)");
 });
+
+// files/989 (owed under "Caption track in the .otio"): a caption track inside Cut's OWN project. `fixtures/cut-project-captions.otio` is
+// Cut's writer's maximal project with a caption track among its overlay tracks (CUT_BLESS=1 writes it); filmcraft's host test
+// `a_caption_track_in_a_pure_cut_project_opens_in_film_as_its_captions` opens it in Film as Film's captions, edits them and pins what Film
+// saves as `film-saved-cut-captions.otio`, which the next test opens in Cut.
+import { maximal } from "./cut-fixture.ts";
+
+function maximalWithCaptions(): J {
+	const cut = maximal() as J;
+	const canvas = cut.project.settings.canvasSize;
+	const data = { ...newCaptionTrackData(), language: "fr" };
+	const cap = (id: string, text: string, at: number, duration: number, extra: J = {}) => ({ id, ...buildCaptionElement({ caption: { text, startTime: at, duration }, style: data.style, canvasSize: canvas }), ...extra });
+	const track = {
+		id: "cut-subs", name: "Sous-titres", type: "caption", hidden: false, caption: data,
+		elements: [
+			cap("cap-1", "Bonjour.", 0.5, 1.5, { name: "Greeting" }),
+			{ ...cap("cap-2", "Deux lignes,\nla seconde.", 2.5, 2), caption: { speaker: "Ana", cue_id: "two", settings: "line:90%" } },
+			cap("cap-3", "Fin.", 6, 1),
+		],
+	};
+	cut.project.scenes[0].tracks.overlay.splice(1, 0, track);
+	return cut;
+}
+
+test("Cut's project with a caption track is pinned as the file Film opens (cut-project-captions.otio)", () => {
+	const cut = maximalWithCaptions();
+	const doc = cutToOtio(cut as any);
+	const bytes = new TextEncoder().encode(`${JSON.stringify(doc, null, 4)}\n`);
+	assert.deepEqual(otioToCut(JSON.parse(new TextDecoder().decode(bytes))), cut, "Cut reads its own write back whole");
+	const golden = join(FIX, "cut-project-captions.otio");
+	if (process.env.CUT_BLESS) writeFileSync(golden, bytes);
+	assert.deepEqual(new Uint8Array(readFileSync(golden)), bytes, "the golden file (CUT_BLESS=1 writes it)");
+});
+
+test("Film's save of Cut's caption project (film-saved-cut-captions.otio) opens in Cut's project mode with Film's caption edits; unedited, the very bytes", () => {
+	const golden = join(FIX, "film-saved-cut-captions.otio");
+	const bytes = new Uint8Array(readFileSync(golden));
+	const s = CutSession.open("subs.otio", bytes);
+	assert.equal(s.mode, "cut");
+	const p = load(s);
+	const [ct] = captionTracks(p.scenes[0]);
+	assert.equal(ct.name, "Sous-titres");
+	assert.equal(ct.caption.language, "fr");
+	assert.deepEqual(ct.elements.map((e: J) => e.content), ["Bonjour.", "Deux, par Film.", "Ajouté par Film."]);
+	assert.deepEqual(ct.elements.slice(0, 2).map((e: J) => e.id), ["cap-1", "cap-2"], "Cut's ids kept by Film");
+	assert.match(ct.elements[2].id, /^film-\d+$/, "the caption Film made, named for Cut");
+	assert.equal(ct.elements[0].name, "Greeting", "Cut's own name of a caption kept");
+	assert.deepEqual(ct.elements[1].caption, { speaker: "Ana", cue_id: "two", settings: "line:90%" });
+	assert.ok(ct.elements.every((e: J) => e.color === "#00ff00"), "Film's style change is every caption's colour in Cut");
+	assert.deepEqual(s.save(p, s.media), bytes, "unedited: the very bytes");
+});
