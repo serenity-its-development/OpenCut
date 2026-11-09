@@ -482,6 +482,7 @@ export function upsertPathKeyframe({
 	const componentValues = decomposeAnimationValue({
 		kind,
 		value: coercedValue,
+		colorSpace: binding.kind === "color" ? binding.colorSpace : undefined,
 	});
 	if (!componentValues) {
 		return animations;

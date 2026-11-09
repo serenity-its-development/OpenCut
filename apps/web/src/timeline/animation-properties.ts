@@ -23,6 +23,7 @@ import {
 } from "@/timeline/element-utils";
 import { VOLUME_DB_MAX, VOLUME_DB_MIN } from "@/timeline/audio-constants";
 import { DEFAULTS } from "@/timeline/defaults";
+import { TEXT_PROPERTY_DEFINITIONS } from "@/animation/text-properties";
 
 export interface AnimationPropertyDefinition {
 	kind: AnimationBindingKind;
@@ -114,6 +115,7 @@ const ANIMATION_PROPERTY_REGISTRY: Record<
 	AnimationPropertyPath,
 	AnimationPropertyDefinition
 > = {
+	...TEXT_PROPERTY_DEFINITIONS,
 	"transform.positionX": createNumberPropertyDefinition({
 		numericRange: { step: 1 },
 		supportsElement: ({ element }) => isVisualElement(element),

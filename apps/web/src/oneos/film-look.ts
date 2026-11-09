@@ -52,13 +52,15 @@ interface Mapping {
 	paths: string[];
 	parts: (v: J) => number[];
 	value: (c: number[]) => J;
+	/** Film's units in one of Cut's, per component (a sloped handle's rise is converted by it). */
+	perCut: number[];
 }
 
 function mappings(effects: J[], kind: string, f: Frame, gain: number, ids: string[]): Mapping[] | string {
 	const out: Mapping[] = [];
 	if (kind === "audio") {
 		const vol = fx(effects, "volume");
-		if (vol) out.push({ effect: vol, param: "level", paths: ["volume"], parts: (v) => [round9(gain + (v.Float ?? 0))], value: (c) => ({ Float: round9(c[0] - gain) }) });
+		if (vol) out.push({ effect: vol, param: "level", paths: ["volume"], parts: (v) => [round9(gain + (v.Float ?? 0))], value: (c) => ({ Float: round9(c[0] - gain) }), perCut: [1] });
 		return out;
 	}
 	const motion = fx(effects, "motion");
@@ -67,13 +69,14 @@ function mappings(effects: J[], kind: string, f: Frame, gain: number, ids: strin
 			effect: motion, param: "position", paths: ["transform.positionX", "transform.positionY"],
 			parts: (v) => { const x = auto(v.Vec2?.x), y = auto(v.Vec2?.y); return [Number.isNaN(x) ? 0 : round9(x - f.w / 2), Number.isNaN(y) ? 0 : round9(y - f.h / 2)]; },
 			value: (c) => ({ Vec2: { x: c[0] + f.w / 2, y: c[1] + f.h / 2 } }),
+			perCut: [1, 1],
 		});
-		out.push({ effect: motion, param: "rotation", paths: ["transform.rotate"], parts: (v) => [v.Float], value: (c) => ({ Float: c[0] }) });
+		out.push({ effect: motion, param: "rotation", paths: ["transform.rotate"], parts: (v) => [v.Float], value: (c) => ({ Float: c[0] }), perCut: [1] });
 	}
 	const op = fx(effects, "opacity");
-	if (op) out.push({ effect: op, param: "opacity", paths: ["opacity"], parts: (v) => [round9(v.Float / 100)], value: (c) => ({ Float: round9(c[0] * 100) }) });
+	if (op) out.push({ effect: op, param: "opacity", paths: ["opacity"], parts: (v) => [round9(v.Float / 100)], value: (c) => ({ Float: round9(c[0] * 100) }), perCut: [100] });
 	blurs(effects).forEach((b, i) => {
-		out.push({ effect: b, param: "blurriness", paths: [`effects.${ids[i]}.params.intensity`], parts: (v) => [round9(v.Float / blurK(f))], value: (c) => ({ Float: round9(c[0] * blurK(f)) }) });
+		out.push({ effect: b, param: "blurriness", paths: [`effects.${ids[i]}.params.intensity`], parts: (v) => [round9(v.Float / blurK(f))], value: (c) => ({ Float: round9(c[0] * blurK(f)) }), perCut: [blurK(f)] });
 	});
 	return out;
 }
@@ -121,7 +124,7 @@ export function filmLook(clip: J, kind: string, f: Frame, gain: number): J | str
 		if (!p) continue;
 		const keys = keysOf(p);
 		if (!keys.length) continue;
-		const chans = filmToCut(keys, m.parts, m.paths.map(() => null), `film-${m.param}`);
+		const chans = filmToCut(keys, m.parts, m.paths.map(() => null), `film-${m.param}`, m.perCut);
 		if (typeof chans === "string") return `Film's ${m.effect.effect} ${m.param} on "${name}": ${chans}`;
 		m.paths.forEach((path, i) => putChannel(anim, path, chans[i]));
 	}
@@ -139,12 +142,12 @@ export function filmLook(clip: J, kind: string, f: Frame, gain: number): J | str
 			const xk = keysOf(s.x), yk = keysOf(s.y);
 			const parts = (v: J) => [round9(v.Float / 100)];
 			if (xk.length) {
-				const c = filmToCut(xk, parts, [null], "film-scale-x");
+				const c = filmToCut(xk, parts, [null], "film-scale-x", [100]);
 				if (typeof c === "string") return `Film's Motion scale on "${name}": ${c}`;
 				putChannel(anim, "transform.scaleX", c[0]);
 			}
 			if (yk.length) {
-				const c = filmToCut(yk, parts, [null], "film-scale-y");
+				const c = filmToCut(yk, parts, [null], "film-scale-y", [100]);
 				if (typeof c === "string") return `Film's Motion scale on "${name}": ${c}`;
 				putChannel(anim, "transform.scaleY", c[0]);
 			}
@@ -220,7 +223,7 @@ export function writeFilmLook(clip: J, kind: string, f: Frame, gain: number, was
 				const uniform = nt.scaleX === nt.scaleY && sameCurve(sx, sy);
 				const toFilm = (ch: CutKey[] | null, prior: J | undefined, axis: string): J[] | string => {
 					if (!ch) return [];
-					const k = cutToFilm([ch], (c) => ({ Float: round9(c[0] * 100) }), keysOf(prior));
+					const k = cutToFilm([ch], (c) => ({ Float: round9(c[0] * 100) }), keysOf(prior), [100]);
 					return typeof k === "string" ? `keyframes-not-in-film: Cut's ${axis} scale on "${name}" ${k}` : k;
 				};
 				const yk = toFilm(sy, s.y, "vertical");
@@ -252,6 +255,6 @@ function keysFor(after: Array<CutKey[] | null>, m: Mapping, p: J, statics: numbe
 	const lead = after.find((c) => c);
 	if (!lead) return [];
 	const chans = after.map((c, i) => c ?? lead.map((k) => ({ ...k, value: statics[i], ...(k.rightHandle ? { rightHandle: { dt: k.rightHandle.dt, dv: 0 } } : {}), ...(k.leftHandle ? { leftHandle: { dt: k.leftHandle.dt, dv: 0 } } : {}) })));
-	const k = cutToFilm(chans, m.value, keysOf(p));
+	const k = cutToFilm(chans, m.value, keysOf(p), m.perCut);
 	return typeof k === "string" ? `keyframes-not-in-film: Cut's ${m.paths.join(" and ")} on "${name}" ${k}` : k;
 }

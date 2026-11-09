@@ -5,6 +5,7 @@ import type {
 	AnimationBindingInstance,
 	AnimationBindingKind,
 	ColorAnimationBinding,
+	ColorSpace,
 	DiscreteAnimationBinding,
 	NumberAnimationBinding,
 	AnimationPath,
@@ -247,6 +248,33 @@ export function parseColorToLinearRgba({
 	};
 }
 
+/** A colour as straight sRGB components (the space Film keys colours in). */
+export function parseColorToSrgba({ color }: { color: string }): LinearRgba | null {
+	const parsed = parse(color);
+	const rgb = parsed ? toRgb(parsed) : null;
+	if (!rgb) {
+		return null;
+	}
+	return {
+		r: rgb.r ?? 0,
+		g: rgb.g ?? 0,
+		b: rgb.b ?? 0,
+		a: clamp({ value: rgb.alpha ?? 1, min: 0, max: 1 }),
+	};
+}
+
+/** Straight sRGB components as a colour. */
+export function formatSrgba({ color }: { color: LinearRgba }): string {
+	const rgb = {
+		mode: "rgb",
+		r: clamp({ value: color.r, min: 0, max: 1 }),
+		g: clamp({ value: color.g, min: 0, max: 1 }),
+		b: clamp({ value: color.b, min: 0, max: 1 }),
+		alpha: clamp({ value: color.a, min: 0, max: 1 }),
+	} as const;
+	return rgb.alpha < 1 ? formatHex8(rgb) : formatHex(rgb);
+}
+
 export function formatLinearRgba({
 	color,
 }: {
@@ -265,9 +293,12 @@ export function formatLinearRgba({
 export function decomposeAnimationValue({
 	kind,
 	value,
+	colorSpace,
 }: {
 	kind: AnimationBindingKind;
 	value: AnimationValue;
+	/** The colour binding's space (a colour's components are read in it). */
+	colorSpace?: ColorSpace;
 }): Record<string, AnimationComponentValue> | null {
 	if (kind === "number") {
 		return typeof value === "number" ? { value } : null;
@@ -281,7 +312,13 @@ export function decomposeAnimationValue({
 		if (typeof value !== "string") {
 			return null;
 		}
-		const parsed = parseColorToLinearRgba({ color: value });
+		if (!colorSpace) {
+			return null;
+		}
+		const parsed =
+			colorSpace === "srgb"
+				? parseColorToSrgba({ color: value })
+				: parseColorToLinearRgba({ color: value });
 		if (!parsed) {
 			return null;
 		}
@@ -329,14 +366,10 @@ export function composeAnimationValue({
 		) {
 			return null;
 		}
-		return formatLinearRgba({
-			color: {
-				r,
-				g,
-				b,
-				a,
-			},
-		});
+		const color = { r, g, b, a };
+		return binding.colorSpace === "srgb"
+			? formatSrgba({ color })
+			: formatLinearRgba({ color });
 	}
 
 	const value = componentValues.value;

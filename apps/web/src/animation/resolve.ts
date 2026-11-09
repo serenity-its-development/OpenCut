@@ -52,6 +52,7 @@ export function resolveAnimationPathValueAtTime<TPath extends AnimationPath>({
 	const fallbackComponents = decomposeAnimationValue({
 		kind: binding.kind,
 		value: fallbackValue,
+		colorSpace: binding.kind === "color" ? binding.colorSpace : undefined,
 	});
 	if (!fallbackComponents) {
 		return fallbackValue;

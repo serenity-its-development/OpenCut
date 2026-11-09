@@ -446,6 +446,86 @@
 														"channelId": "color:a"
 													}
 												]
+											},
+											"fontSize": {
+												"path": "fontSize",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontSize:value"
+													}
+												]
+											},
+											"letterSpacing": {
+												"path": "letterSpacing",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "letterSpacing:value"
+													}
+												]
+											},
+											"content": {
+												"path": "content",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "content:value"
+													}
+												]
+											},
+											"fontFamily": {
+												"path": "fontFamily",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontFamily:value"
+													}
+												]
+											},
+											"textAlign": {
+												"path": "textAlign",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "textAlign:value"
+													}
+												]
+											},
+											"fontWeight": {
+												"path": "fontWeight",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontWeight:value"
+													}
+												]
+											},
+											"fontStyle": {
+												"path": "fontStyle",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontStyle:value"
+													}
+												]
+											},
+											"textDecoration": {
+												"path": "textDecoration",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "textDecoration:value"
+													}
+												]
 											}
 										},
 										"channels": {
@@ -506,6 +586,111 @@
 														"value": 1,
 														"segmentToNext": "linear",
 														"tangentMode": "flat"
+													}
+												]
+											},
+											"fontSize:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-019",
+														"time": 0,
+														"value": 64,
+														"rightHandle": {
+															"dt": 30000,
+															"dv": 12
+														},
+														"segmentToNext": "bezier",
+														"tangentMode": "broken"
+													},
+													{
+														"id": "id-020",
+														"time": 120000,
+														"value": 96,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"letterSpacing:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-021",
+														"time": 60000,
+														"value": 4,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"content:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-022",
+														"time": 0,
+														"value": "Hello 日本語"
+													},
+													{
+														"id": "id-023",
+														"time": 120000,
+														"value": "Goodbye"
+													}
+												]
+											},
+											"fontFamily:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-024",
+														"time": 120000,
+														"value": "Roboto"
+													}
+												]
+											},
+											"textAlign:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-025",
+														"time": 120000,
+														"value": "left"
+													}
+												]
+											},
+											"fontWeight:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-026",
+														"time": 120000,
+														"value": "normal"
+													}
+												]
+											},
+											"fontStyle:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-027",
+														"time": 120000,
+														"value": "normal"
+													}
+												]
+											},
+											"textDecoration:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-028",
+														"time": 0,
+														"value": "underline"
+													},
+													{
+														"id": "id-029",
+														"time": 120000,
+														"value": "line-through"
 													}
 												]
 											}
@@ -586,7 +771,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-019",
+														"id": "id-030",
 														"time": 120000,
 														"value": 1,
 														"segmentToNext": "linear",
@@ -612,7 +797,7 @@
 												"rotation": 0,
 												"scale": 1
 											},
-											"id": "id-020"
+											"id": "id-031"
 										}
 									]
 								},
@@ -810,7 +995,7 @@
 								},
 								"effects": [
 									{
-										"id": "id-021",
+										"id": "id-032",
 										"type": "blur",
 										"params": {
 											"intensity": 15
@@ -831,7 +1016,7 @@
 											"centerY": 0,
 											"rotation": 0
 										},
-										"id": "id-022"
+										"id": "id-033"
 									},
 									{
 										"type": "cinematic-bars",
@@ -848,7 +1033,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-023"
+										"id": "id-034"
 									},
 									{
 										"type": "rectangle",
@@ -865,7 +1050,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-024"
+										"id": "id-035"
 									},
 									{
 										"type": "ellipse",
@@ -882,7 +1067,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-025"
+										"id": "id-036"
 									},
 									{
 										"type": "heart",
@@ -899,7 +1084,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-026"
+										"id": "id-037"
 									},
 									{
 										"type": "diamond",
@@ -916,7 +1101,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-027"
+										"id": "id-038"
 									},
 									{
 										"type": "star",
@@ -933,7 +1118,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-028"
+										"id": "id-039"
 									},
 									{
 										"type": "text",
@@ -956,7 +1141,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-029"
+										"id": "id-040"
 									},
 									{
 										"type": "custom",
@@ -973,7 +1158,7 @@
 											"rotation": 0,
 											"scale": 1
 										},
-										"id": "id-030"
+										"id": "id-041"
 									}
 								],
 								"animations": {
@@ -1008,13 +1193,13 @@
 												}
 											]
 										},
-										"effects.id-021.params.intensity": {
-											"path": "effects.id-021.params.intensity",
+										"effects.id-032.params.intensity": {
+											"path": "effects.id-032.params.intensity",
 											"kind": "number",
 											"components": [
 												{
 													"key": "value",
-													"channelId": "effects.id-021.params.intensity:value"
+													"channelId": "effects.id-032.params.intensity:value"
 												}
 											]
 										}
@@ -1024,14 +1209,14 @@
 											"kind": "scalar",
 											"keys": [
 												{
-													"id": "id-031",
+													"id": "id-042",
 													"time": 0,
 													"value": 0,
 													"segmentToNext": "linear",
 													"tangentMode": "flat"
 												},
 												{
-													"id": "id-032",
+													"id": "id-043",
 													"time": 120000,
 													"value": 1,
 													"segmentToNext": "linear",
@@ -1043,7 +1228,7 @@
 											"kind": "scalar",
 											"keys": [
 												{
-													"id": "id-033",
+													"id": "id-044",
 													"time": 240000,
 													"value": 40,
 													"segmentToNext": "linear",
@@ -1055,7 +1240,7 @@
 											"kind": "scalar",
 											"keys": [
 												{
-													"id": "id-034",
+													"id": "id-045",
 													"time": 360000,
 													"value": 0.2,
 													"segmentToNext": "linear",
@@ -1063,11 +1248,11 @@
 												}
 											]
 										},
-										"effects.id-021.params.intensity:value": {
+										"effects.id-032.params.intensity:value": {
 											"kind": "scalar",
 											"keys": [
 												{
-													"id": "id-035",
+													"id": "id-046",
 													"time": 120000,
 													"value": 40,
 													"segmentToNext": "linear",
@@ -1149,7 +1334,7 @@
 									"id": "t1",
 									"effects": [
 										{
-											"id": "id-036",
+											"id": "id-047",
 											"type": "blur",
 											"params": {
 												"intensity": 15
@@ -1191,6 +1376,86 @@
 														"channelId": "color:a"
 													}
 												]
+											},
+											"fontSize": {
+												"path": "fontSize",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontSize:value"
+													}
+												]
+											},
+											"letterSpacing": {
+												"path": "letterSpacing",
+												"kind": "number",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "letterSpacing:value"
+													}
+												]
+											},
+											"content": {
+												"path": "content",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "content:value"
+													}
+												]
+											},
+											"fontFamily": {
+												"path": "fontFamily",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontFamily:value"
+													}
+												]
+											},
+											"textAlign": {
+												"path": "textAlign",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "textAlign:value"
+													}
+												]
+											},
+											"fontWeight": {
+												"path": "fontWeight",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontWeight:value"
+													}
+												]
+											},
+											"fontStyle": {
+												"path": "fontStyle",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "fontStyle:value"
+													}
+												]
+											},
+											"textDecoration": {
+												"path": "textDecoration",
+												"kind": "discrete",
+												"components": [
+													{
+														"key": "value",
+														"channelId": "textDecoration:value"
+													}
+												]
 											}
 										},
 										"channels": {
@@ -1198,7 +1463,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-037",
+														"id": "id-048",
 														"time": 0,
 														"value": 0,
 														"segmentToNext": "linear",
@@ -1210,7 +1475,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-038",
+														"id": "id-049",
 														"time": 120000,
 														"value": 1,
 														"segmentToNext": "linear",
@@ -1222,7 +1487,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-038",
+														"id": "id-049",
 														"time": 120000,
 														"value": 0,
 														"segmentToNext": "linear",
@@ -1234,7 +1499,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-038",
+														"id": "id-049",
 														"time": 120000,
 														"value": 0,
 														"segmentToNext": "linear",
@@ -1246,11 +1511,116 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-038",
+														"id": "id-049",
 														"time": 120000,
 														"value": 1,
 														"segmentToNext": "linear",
 														"tangentMode": "flat"
+													}
+												]
+											},
+											"fontSize:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-050",
+														"time": 0,
+														"value": 64,
+														"rightHandle": {
+															"dt": 30000,
+															"dv": 12
+														},
+														"segmentToNext": "bezier",
+														"tangentMode": "broken"
+													},
+													{
+														"id": "id-051",
+														"time": 120000,
+														"value": 96,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"letterSpacing:value": {
+												"kind": "scalar",
+												"keys": [
+													{
+														"id": "id-052",
+														"time": 60000,
+														"value": 4,
+														"segmentToNext": "linear",
+														"tangentMode": "flat"
+													}
+												]
+											},
+											"content:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-053",
+														"time": 0,
+														"value": "Hello 日本語"
+													},
+													{
+														"id": "id-054",
+														"time": 120000,
+														"value": "Goodbye"
+													}
+												]
+											},
+											"fontFamily:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-055",
+														"time": 120000,
+														"value": "Roboto"
+													}
+												]
+											},
+											"textAlign:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-056",
+														"time": 120000,
+														"value": "left"
+													}
+												]
+											},
+											"fontWeight:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-057",
+														"time": 120000,
+														"value": "normal"
+													}
+												]
+											},
+											"fontStyle:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-058",
+														"time": 120000,
+														"value": "normal"
+													}
+												]
+											},
+											"textDecoration:value": {
+												"kind": "discrete",
+												"keys": [
+													{
+														"id": "id-059",
+														"time": 0,
+														"value": "underline"
+													},
+													{
+														"id": "id-060",
+														"time": 120000,
+														"value": "line-through"
 													}
 												]
 											}
@@ -1331,7 +1701,7 @@
 												"kind": "scalar",
 												"keys": [
 													{
-														"id": "id-039",
+														"id": "id-061",
 														"time": 120000,
 														"value": 1,
 														"segmentToNext": "linear",
@@ -1357,7 +1727,7 @@
 												"rotation": 0,
 												"scale": 1
 											},
-											"id": "id-040"
+											"id": "id-062"
 										}
 									]
 								},

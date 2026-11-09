@@ -2,6 +2,7 @@ import { CORNER_RADIUS_MIN } from "@/text/background";
 import { DEFAULTS } from "@/timeline/defaults";
 import type { TextBackground, TextElement } from "@/timeline";
 import { resolveNumberAtTime } from "@/animation/values";
+import { resolveAnimationPathValueAtTime } from "@/animation/resolve";
 import {
 	getTextVisualRect,
 } from "./layout";
@@ -56,8 +57,34 @@ export function getTextMeasurementContext():
 	throw new Error("Failed to create text measurement context");
 }
 
+/**
+ * The text's typography at `localTime` (OneOS files/989, Mona 2026-11-09: "Build text animation in Cut"): its size and tracking as their
+ * channels ease them, its font, content, alignment, weight, style and decoration as their channels hold them; a field with no channel is
+ * the element's own.
+ */
+export function resolveTextAtTime({ element, localTime }: { element: TextElement; localTime: number }): TextElement {
+	const anim = element.animations;
+	if (!anim) {
+		return element;
+	}
+	const at = Math.max(0, localTime);
+	const held = <T extends string>(path: "fontFamily" | "content" | "textAlign" | "fontWeight" | "fontStyle" | "textDecoration", base: T): T =>
+		resolveAnimationPathValueAtTime({ animations: anim, propertyPath: path, localTime: at, fallbackValue: base }) as T;
+	return {
+		...element,
+		fontSize: resolveNumberAtTime({ baseValue: element.fontSize, animations: anim, propertyPath: "fontSize", localTime: at }),
+		letterSpacing: resolveNumberAtTime({ baseValue: element.letterSpacing ?? DEFAULTS.text.letterSpacing, animations: anim, propertyPath: "letterSpacing", localTime: at }),
+		fontFamily: held("fontFamily", element.fontFamily),
+		content: held("content", element.content),
+		textAlign: held("textAlign", element.textAlign),
+		fontWeight: held("fontWeight", element.fontWeight),
+		fontStyle: held("fontStyle", element.fontStyle),
+		textDecoration: held("textDecoration", element.textDecoration),
+	};
+}
+
 export function measureTextElement({
-	element,
+	element: at,
 	canvasHeight,
 	localTime,
 	ctx,
@@ -67,6 +94,7 @@ export function measureTextElement({
 	localTime: number;
 	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 }): MeasuredTextElement {
+	const element = resolveTextAtTime({ element: at, localTime });
 	const measuredLayout = measureTextLayout({
 		text: {
 			content: element.content,

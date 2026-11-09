@@ -22,7 +22,7 @@ const { effectsRegistry, buildDefaultEffectInstance } = await import("../../src/
 const { registerDefaultEffects } = await import("../../src/effects/definitions/index.ts");
 const { masksRegistry, buildDefaultMaskInstance, registerDefaultMasks } = await import("../../src/masks/index.ts");
 const { graphicsRegistry, registerDefaultGraphics } = await import("../../src/graphics/index.ts");
-const { buildEffectParamPath, buildGraphicParamPath, upsertPathKeyframe } = await import("../../src/animation/index.ts");
+const { buildEffectParamPath, buildGraphicParamPath, upsertPathKeyframe, updateScalarKeyframeCurve } = await import("../../src/animation/index.ts");
 const { resolveAnimationTarget } = await import("../../src/timeline/animation-targets.ts");
 registerDefaultEffects();
 registerDefaultMasks();
@@ -62,6 +62,24 @@ function scene(id: string, isMain: boolean): SerializedScene {
 	title = { ...title, effects: EFFECT_TYPES.map((effectType) => buildDefaultEffectInstance({ effectType })) };
 	title = key(title, "opacity", s(0), 0);
 	title = key(title, "color", s(1), "#ff0000");
+	// Its typography animated (Mona 2026-11-09: "Build text animation in Cut"): size and tracking eased, the rest held from key to key,
+	// and the size's first segment leaving on a sloped handle (Mona: "Add slopes to Film").
+	title = key(title, "fontSize", s(0), 64);
+	title = key(title, "fontSize", s(1), 96);
+	title = key(title, "letterSpacing", s(0.5), 4);
+	title = key(title, "content", s(0), "Hello 日本語");
+	title = key(title, "content", s(1), "Goodbye");
+	title = key(title, "fontFamily", s(1), "Roboto");
+	title = key(title, "textAlign", s(1), "left");
+	title = key(title, "fontWeight", s(1), "normal");
+	title = key(title, "fontStyle", s(1), "normal");
+	title = key(title, "textDecoration", s(0), "underline");
+	title = key(title, "textDecoration", s(1), "line-through");
+	{
+		const sizeKey = (title.animations?.channels["fontSize:value"] as { keys: Array<{ id: string }> }).keys[0].id;
+		const curved = updateScalarKeyframeCurve({ animations: title.animations, propertyPath: "fontSize", componentKey: "value", keyframeId: sizeKey, patch: { segmentToNext: "bezier", tangentMode: "broken", rightHandle: { dt: s(0.25), dv: 12 } } });
+		title = { ...title, animations: curved };
+	}
 	const star = { ...buildStickerElement({ stickerId: "shapes:star", name: "Star", startTime: s(0) }), id: "g1", duration: s(1), opacity: 0.5, transform } as El<"sticker">;
 	const graphics = GRAPHIC_IDS.map((definitionId, i) => {
 		let g = { ...buildGraphicElement({ definitionId, startTime: s(2 + i * 2) }), id: `g${i + 2}`, duration: s(2), transform } as El<"graphic">;

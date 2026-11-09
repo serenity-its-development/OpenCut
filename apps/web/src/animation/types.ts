@@ -16,7 +16,26 @@ export const ANIMATION_PROPERTY_PATHS = [
 	"background.offsetX",
 	"background.offsetY",
 	"background.cornerRadius",
+	// A text's typography (OneOS files/989, Mona 2026-11-09: "Build text animation in Cut"): size and tracking ease, the rest are held.
+	"fontSize",
+	"letterSpacing",
+	"fontFamily",
+	"content",
+	"textAlign",
+	"fontWeight",
+	"fontStyle",
+	"textDecoration",
 ] as const;
+
+export type TextAnimationPropertyPath =
+	| "fontSize"
+	| "letterSpacing"
+	| "fontFamily"
+	| "content"
+	| "textAlign"
+	| "fontWeight"
+	| "fontStyle"
+	| "textDecoration";
 
 export type AnimationPropertyPath = (typeof ANIMATION_PROPERTY_PATHS)[number];
 export type GraphicParamPath = `params.${string}`;
@@ -50,6 +69,14 @@ export interface AnimationPropertyValueMap {
 	"background.offsetX": number;
 	"background.offsetY": number;
 	"background.cornerRadius": number;
+	fontSize: number;
+	letterSpacing: number;
+	fontFamily: string;
+	content: string;
+	textAlign: string;
+	fontWeight: string;
+	fontStyle: string;
+	textDecoration: string;
 }
 export type DynamicAnimationPathValue = number | string | boolean;
 
@@ -67,9 +94,8 @@ export type AnimationValueForPath<TPath extends AnimationPath> =
 export type AnimationNumericPropertyPath = {
 	[K in AnimationPropertyPath]: AnimationValueForPath<K> extends number ? K : never;
 }[AnimationPropertyPath];
-export type AnimationColorPropertyPath = {
-	[K in AnimationPropertyPath]: AnimationValueForPath<K> extends string ? K : never;
-}[AnimationPropertyPath];
+/** The colour paths (named: a text's font and content are strings too, but held, not colours). */
+export type AnimationColorPropertyPath = "color" | "background.color";
 
 export type ContinuousKeyframeInterpolation = "linear" | "hold" | "bezier";
 export type DiscreteKeyframeInterpolation = "hold";
@@ -151,8 +177,14 @@ export interface Vector2AnimationBinding
 
 export interface ColorAnimationBinding
 	extends BaseAnimationBinding<"color", "r" | "g" | "b" | "a"> {
-	colorSpace: "srgb-linear";
+	/**
+	 * Where the colour's components are kept and eased: Cut's own channels are linear light; an `srgb` channel holds and eases sRGB
+	 * components, as Film keys a colour (OneOS files/989, Mona 2026-11-09: "Add sRGB channel to Cut"), so both tools draw it alike.
+	 */
+	colorSpace: ColorSpace;
 }
+
+export type ColorSpace = "srgb-linear" | "srgb";
 
 export interface DiscreteAnimationBinding
 	extends BaseAnimationBinding<"discrete", "value"> {}

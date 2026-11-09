@@ -90,13 +90,31 @@ test("Cut's edits of Film's keyframes are written back as Film's keyframes, and 
 	assert.deepEqual(channel(element(again, "Keyed sound"), "volume").map((k: J) => k.value), [-3, -9], "the sound Cut set stays as the gain moves");
 });
 
-test("a curve Film's keyframes cannot hold is refused by name at save, and nothing is written", () => {
+// Mona 2026-11-09: "Add slopes to Film". Film's keyframes hold a sloped handle (its reach and its rise per component), so every curve Cut
+// draws is one Film draws: Cut's sloped handle on Film's clip is written as Film's eased key with its rise, in Film's units.
+test("a sloped handle Cut sets on Film's keyframes is written as Film's sloped key (its reach and rise, in Film's units), and reopens as the same curve", () => {
 	const s = CutSession.open("Keys.otio", film);
 	const p = load(s);
 	const k = channel(element(p, "Keyed"), "opacity");
 	k[1].segmentToNext = "bezier";
 	k[1].rightHandle = { dt: 10000, dv: 0.2 };
-	assert.throws(() => s.save(p, s.media), (e: Error & { code?: string }) => e.code === "keyframes-not-in-film" && /opacity/.test(e.message) && /Keyed/.test(e.message));
+	k[2].leftHandle = { dt: -15000, dv: 0.05 };
+	const out = s.save(p, s.media);
+	const saved = JSON.parse(new TextDecoder().decode(out));
+	const op = fxOf(clipOf(saved, "Keyed"), "opacity").params.opacity.keyframes;
+	assert.deepEqual([op[1].interp, op[1].out_influence, op[1].out_rise], ["EaseOut", 10000 / 60000, [20]], "the out side: a sixth of the segment, rising 20%");
+	assert.deepEqual([op[2].in_influence, op[2].in_rise], [0.25, [5]], "the in side: a quarter of the segment, its rise added to the next key's 100%");
+	const again = channel(element(load(CutSession.open("Keys.otio", out)), "Keyed"), "opacity");
+	assert.deepEqual([again[1].rightHandle, again[2].leftHandle], [{ dt: 10000, dv: 0.2 }, { dt: -15000, dv: 0.05 }], "Cut reopens the very handles");
+});
+
+test("a curve Film's keyframes cannot hold (components keyed at different times) is refused by name at save, and nothing is written", () => {
+	const s = CutSession.open("Keys.otio", film);
+	const p = load(s);
+	const x = channel(element(p, "Keyed"), "transform.positionX");
+	x.push({ id: "k-x", time: 90000, value: 10, segmentToNext: "linear", tangentMode: "flat" });
+	x.sort((a: J, b: J) => a.time - b.time);
+	assert.throws(() => s.save(p, s.media), (e: Error & { code?: string }) => e.code === "keyframes-not-in-film" && /different times/.test(e.message) && /Keyed/.test(e.message));
 });
 
 // files/989 step 2 (Mona: "film should be able to edit cut though"): Film's edit of CUT's keyframes (filmcraft

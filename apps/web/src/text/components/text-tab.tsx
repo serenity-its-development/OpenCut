@@ -27,6 +27,8 @@ import {
 import { usePropertyDraft } from "@/components/editor/panels/properties/hooks/use-property-draft";
 import { useKeyframedColorProperty } from "@/components/editor/panels/properties/hooks/use-keyframed-color-property";
 import { useKeyframedNumberProperty } from "@/components/editor/panels/properties/hooks/use-keyframed-number-property";
+import { useKeyframedHeldProperty } from "@/components/editor/panels/properties/hooks/use-keyframed-held-property";
+import { resolveTextAtTime } from "@/text/measure-element";
 import { useElementPlayhead } from "@/components/editor/panels/properties/hooks/use-element-playhead";
 import { KeyframeToggle } from "@/components/editor/panels/properties/components/keyframe-toggle";
 import { isPropertyAtDefault } from "@/rendering/components/transform-tab";
@@ -69,22 +71,48 @@ function ContentSection({
 	trackId: string;
 }) {
 	const editor = useEditor();
+	const { localTime, isPlayheadWithinElementRange } = useElementPlayhead({
+		startTime: element.startTime,
+		duration: element.duration,
+	});
+	const resolved = resolveTextAtTime({ element, localTime });
+	const keyed = useKeyframedHeldProperty({
+		trackId,
+		elementId: element.id,
+		animations: element.animations,
+		propertyPath: "content",
+		localTime,
+		isPlayheadWithinElementRange,
+		valueAtPlayhead: resolved.content,
+		buildBaseUpdates: ({ value }) => ({ content: value }),
+	});
 
 	const content = usePropertyDraft({
-		displayValue: element.content,
+		displayValue: resolved.content,
 		parse: (input) => input,
 		onPreview: (value) =>
-			editor.timeline.previewElements({
-				updates: [
-					{ trackId, elementId: element.id, updates: { content: value } },
-				],
-			}),
-		onCommit: () => editor.timeline.commitPreview(),
+			keyed.hasAnimatedKeyframes && isPlayheadWithinElementRange
+				? undefined
+				: editor.timeline.previewElements({
+						updates: [
+							{ trackId, elementId: element.id, updates: { content: value } },
+						],
+					}),
+		onCommit: () =>
+			keyed.hasAnimatedKeyframes && isPlayheadWithinElementRange
+				? keyed.commitValue({ value: content.displayValue })
+				: editor.timeline.commitPreview(),
 	});
 
 	return (
 		<Section collapsible sectionKey={`${element.id}:content`}>
 			<SectionHeader>
+				<KeyframeToggle
+					isActive={keyed.isKeyframedAtTime}
+					isDisabled={!isPlayheadWithinElementRange}
+					title="Toggle text content keyframe"
+					onToggle={keyed.toggleKeyframe}
+				/>
 				<SectionTitle>Content</SectionTitle>
 			</SectionHeader>
 			<SectionContent>
@@ -131,8 +159,15 @@ function TypographySection({
 		buildBaseUpdates: ({ value }) => ({ color: value }),
 	});
 
-	const fontSize = usePropertyDraft({
-		displayValue: element.fontSize.toString(),
+	const typography = resolveTextAtTime({ element, localTime });
+	const fontSize = useKeyframedNumberProperty({
+		trackId,
+		elementId: element.id,
+		animations: element.animations,
+		propertyPath: "fontSize",
+		localTime,
+		isPlayheadWithinElementRange,
+		displayValue: typography.fontSize.toString(),
 		parse: (input) => {
 			const parsed = parseFloat(input);
 			if (Number.isNaN(parsed)) return null;
@@ -142,13 +177,19 @@ function TypographySection({
 				max: MAX_FONT_SIZE,
 			});
 		},
-		onPreview: (value) =>
-			editor.timeline.previewElements({
-				updates: [
-					{ trackId, elementId: element.id, updates: { fontSize: value } },
-				],
-			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		valueAtPlayhead: typography.fontSize,
+		step: 1,
+		buildBaseUpdates: ({ value }) => ({ fontSize: value }),
+	});
+	const fontFamily = useKeyframedHeldProperty({
+		trackId,
+		elementId: element.id,
+		animations: element.animations,
+		propertyPath: "fontFamily",
+		localTime,
+		isPlayheadWithinElementRange,
+		valueAtPlayhead: typography.fontFamily,
+		buildBaseUpdates: ({ value }) => ({ fontFamily: value }),
 	});
 
 	return (
@@ -158,23 +199,33 @@ function TypographySection({
 			</SectionHeader>
 			<SectionContent>
 				<SectionFields>
-					<SectionField label="Font">
+					<SectionField
+						label="Font"
+						beforeLabel={
+							<KeyframeToggle
+								isActive={fontFamily.isKeyframedAtTime}
+								isDisabled={!isPlayheadWithinElementRange}
+								title="Toggle font keyframe"
+								onToggle={fontFamily.toggleKeyframe}
+							/>
+						}
+					>
 						<FontPicker
-							defaultValue={element.fontFamily}
-							onValueChange={(value) =>
-								editor.timeline.updateElements({
-									updates: [
-										{
-											trackId,
-											elementId: element.id,
-											patch: { fontFamily: value },
-										},
-									],
-								})
-							}
+							defaultValue={typography.fontFamily}
+							onValueChange={(value) => fontFamily.commitValue({ value })}
 						/>
 					</SectionField>
-					<SectionField label="Size">
+					<SectionField
+						label="Size"
+						beforeLabel={
+							<KeyframeToggle
+								isActive={fontSize.isKeyframedAtTime}
+								isDisabled={!isPlayheadWithinElementRange}
+								title="Toggle font size keyframe"
+								onToggle={fontSize.toggleKeyframe}
+							/>
+						}
+					>
 						<NumberField
 							value={fontSize.displayValue}
 							min={MIN_FONT_SIZE}
@@ -197,7 +248,7 @@ function TypographySection({
 									],
 								})
 							}
-							isDefault={element.fontSize === DEFAULTS.text.element.fontSize}
+							isDefault={typography.fontSize === DEFAULTS.text.element.fontSize}
 							icon={<HugeiconsIcon icon={TextFontIcon} />}
 						/>
 					</SectionField>
@@ -235,21 +286,26 @@ function SpacingSection({
 }) {
 	const editor = useEditor();
 
-	const letterSpacing = usePropertyDraft({
-		displayValue: Math.round(
-			element.letterSpacing ?? DEFAULTS.text.letterSpacing,
-		).toString(),
+	const { localTime, isPlayheadWithinElementRange } = useElementPlayhead({
+		startTime: element.startTime,
+		duration: element.duration,
+	});
+	const tracking = resolveTextAtTime({ element, localTime }).letterSpacing ?? DEFAULTS.text.letterSpacing;
+	const letterSpacing = useKeyframedNumberProperty({
+		trackId,
+		elementId: element.id,
+		animations: element.animations,
+		propertyPath: "letterSpacing",
+		localTime,
+		isPlayheadWithinElementRange,
+		displayValue: Math.round(tracking).toString(),
 		parse: (input) => {
 			const parsed = parseFloat(input);
 			return Number.isNaN(parsed) ? null : Math.round(parsed);
 		},
-		onPreview: (value) =>
-			editor.timeline.previewElements({
-				updates: [
-					{ trackId, elementId: element.id, updates: { letterSpacing: value } },
-				],
-			}),
-		onCommit: () => editor.timeline.commitPreview(),
+		valueAtPlayhead: tracking,
+		step: 1,
+		buildBaseUpdates: ({ value }) => ({ letterSpacing: value }),
 	});
 
 	const lineHeight = usePropertyDraft({
@@ -279,7 +335,18 @@ function SpacingSection({
 			</SectionHeader>
 			<SectionContent>
 				<div className="flex items-start gap-2">
-					<SectionField label="Letter spacing" className="w-1/2">
+					<SectionField
+						label="Letter spacing"
+						className="w-1/2"
+						beforeLabel={
+							<KeyframeToggle
+								isActive={letterSpacing.isKeyframedAtTime}
+								isDisabled={!isPlayheadWithinElementRange}
+								title="Toggle letter spacing keyframe"
+								onToggle={letterSpacing.toggleKeyframe}
+							/>
+						}
+					>
 						<NumberField
 							value={letterSpacing.displayValue}
 							onFocus={letterSpacing.onFocus}
@@ -298,10 +365,7 @@ function SpacingSection({
 									],
 								})
 							}
-							isDefault={
-								(element.letterSpacing ?? DEFAULTS.text.letterSpacing) ===
-								DEFAULTS.text.letterSpacing
-							}
+							isDefault={tracking === DEFAULTS.text.letterSpacing}
 							icon={<OcTextWidthIcon size={14} />}
 						/>
 					</SectionField>
