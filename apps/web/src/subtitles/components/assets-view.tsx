@@ -21,6 +21,7 @@ import type {
 import { transcriptionService } from "@/services/transcription/service";
 import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
+import { captionsGoTo } from "@/oneos/captions";
 import {
 	insertCaptionChunksAsCaptionTrack,
 	insertCaptionChunksAsTextTrack,
@@ -109,12 +110,20 @@ export function Captions() {
 		}
 	};
 
+	// OneOS (files/989): captions go to a caption track or a text track by where they came from (`captionsGoTo`).
 	const insertCaptions = ({
 		captions,
+		to,
+		language,
 	}: {
 		captions: CaptionChunk[];
+		to: "caption" | "text";
+		language?: string;
 	}): boolean => {
-		const trackId = insertCaptionChunksAsTextTrack({ editor, captions });
+		const trackId =
+			to === "caption"
+				? insertCaptionChunksAsCaptionTrack({ editor, captions, language })
+				: insertCaptionChunksAsTextTrack({ editor, captions });
 		return trackId !== null;
 	};
 
@@ -142,7 +151,8 @@ export function Captions() {
 			dispatch({ type: "update_step", step: "Generating captions..." });
 			const captionChunks = buildCaptionChunks({ segments: result.segments });
 
-			if (!insertCaptions({ captions: captionChunks })) {
+			// OneOS (files/989, Mona 2026-11-10: "Yes, caption track"): a transcription makes a caption track, as an SRT import does.
+			if (!insertCaptions({ captions: captionChunks, to: captionsGoTo({ transcription: true }), language: result.language })) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}
@@ -184,10 +194,7 @@ export function Captions() {
 			dispatch({ type: "update_step", step: "Importing subtitles..." });
 
 			// OneOS (files/989, Mona 2026-11-10: "Caption track in the .otio"): an SRT makes a caption track; an ASS (styled cues) a text track.
-			const inserted = file.name.toLowerCase().endsWith(".srt")
-				? insertCaptionChunksAsCaptionTrack({ editor, captions: result.captions }) !== null
-				: insertCaptions({ captions: result.captions });
-			if (!inserted) {
+			if (!insertCaptions({ captions: result.captions, to: captionsGoTo({ file: file.name }) })) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}

@@ -45,6 +45,37 @@ export function newCaptionTrackData(): CaptionTrackData {
 	return { format: "Subtitle", language: "en", style: clone(FILM_CAPTION_STYLE), locked: false, sync_lock: true, vtt_blocks: [] };
 }
 
+/**
+ * Where captions Cut makes go (files/989, Mona 2026-11-10: "Caption track in the .otio" for an SRT import; "Yes, caption track" for a
+ * transcription): a transcription's captions and an SRT's cues make a CAPTION track; an ASS file's cues carry styles of their own, which a
+ * caption track (one style) cannot hold, so they stay text elements on a text track.
+ */
+export function captionsGoTo(source: { transcription: true } | { file: string }): "caption" | "text" {
+	return "transcription" in source || source.file.toLowerCase().endsWith(".srt") ? "caption" : "text";
+}
+
+/**
+ * A new caption track's data for captions Cut makes: Film's new track, in the language the person stated, as Film's own caption import
+ * takes the language it is given (filmcraft `engine/src/captions.rs` `import`); none stated (auto-detect, a file), Film's new track's.
+ */
+export function captionTrackDataFor({ language }: { language?: string }): CaptionTrackData {
+	const d = newCaptionTrackData();
+	if (language !== undefined && language !== "" && language !== "auto") d.language = language;
+	return d;
+}
+
+/**
+ * Each caption's place in Cut's ticks, from its start and its END (`ticks`: seconds to Cut's ticks, the editor's `mediaTimeFromSeconds`),
+ * so a caption that ends where the next begins in seconds ends where it begins in ticks too: rounding a start and a duration apart can make
+ * them overlap by a tick, which Film's track (one caption at a time) refuses (`caption-overlap`). A transcription's times are any seconds.
+ */
+export function captionTimes(captions: { startTime: number; duration: number }[], ticks: (seconds: number) => number): { start: number; duration: number }[] {
+	return captions.map((c) => {
+		const start = ticks(c.startTime);
+		return { start, duration: ticks(c.startTime + c.duration) - start };
+	});
+}
+
 /** Cut's text background defaults (timeline/defaults.ts `defaultTextBackground`; the editor tests pin that they agree). */
 export const TEXT_BACKGROUND = { enabled: false, color: "#000000", cornerRadius: 0, paddingX: 30, paddingY: 42, offsetX: 0, offsetY: 0 };
 /** Cut's text size reference (text/typography.ts `FONT_SIZE_SCALE_REFERENCE`): a text's pixels are `fontSize · height / 90`. */
@@ -282,9 +313,10 @@ export function writeCaptionTrack(t: J, before: J | null, rate: number, canvas: 
 /** A cue (an SRT's, or any timed text) as a caption on a caption track drawn in `style`: a text element named by its text. */
 export function buildCaptionElement({ caption, style, canvasSize }: { caption: { text: string; startTime: number; duration: number }; style: CaptionStyle; canvasSize: { width: number; height: number } }): J {
 	const text = caption.text.trim().replace(/\r\n/g, "\n");
+	const [at] = captionTimes([caption], (s) => Math.round(s * TICKS));
 	return {
 		type: "text", name: text, content: text,
-		startTime: Math.round(caption.startTime * TICKS), duration: Math.round(caption.duration * TICKS), trimStart: 0, trimEnd: 0,
+		startTime: at.start, duration: at.duration, trimStart: 0, trimEnd: 0,
 		caption: { speaker: null, cue_id: null, settings: "" },
 		...captionLook(style, text, canvasSize),
 	};

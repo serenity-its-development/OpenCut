@@ -1,5 +1,5 @@
 import { Command, type CommandResult } from "@/commands/base-command";
-import type { SceneTracks, TrackType } from "@/timeline";
+import type { CaptionTrackData, SceneTracks, TrackType } from "@/timeline";
 import { generateUUID } from "@/utils/id";
 import { EditorCore } from "@/core";
 import {
@@ -14,6 +14,8 @@ export class AddTrackCommand extends Command {
 	constructor(
 		private type: TrackType,
 		private index?: number,
+		/** OneOS (files/989): a caption track's data when it is not a new track's (`oneos/captions.ts` `captionTrackDataFor`). */
+		private caption?: CaptionTrackData,
 	) {
 		super();
 		this.trackId = generateUUID();
@@ -42,6 +44,7 @@ export class AddTrackCommand extends Command {
 						insertIndex,
 						trackId: this.trackId,
 						trackType: this.type,
+						caption: this.caption,
 					});
 
 		editor.timeline.updateTracks(updatedTracks);
@@ -89,11 +92,13 @@ function buildOverlayTrackState({
 	insertIndex,
 	trackId,
 	trackType,
+	caption,
 }: {
 	tracks: SceneTracks;
 	insertIndex: number;
 	trackId: string;
 	trackType: Exclude<TrackType, "audio">;
+	caption?: CaptionTrackData;
 }): SceneTracks {
 	const overlayInsertIndex = Math.min(insertIndex, tracks.overlay.length);
 	const newTrack =
@@ -104,7 +109,7 @@ function buildOverlayTrackState({
 				: trackType === "graphic"
 					? buildEmptyTrack({ id: trackId, type: "graphic" })
 					: trackType === "caption"
-						? buildEmptyTrack({ id: trackId, type: "caption" })
+						? { ...buildEmptyTrack({ id: trackId, type: "caption" }), ...(caption ? { caption } : {}) }
 						: buildEmptyTrack({ id: trackId, type: "effect" });
 	return {
 		...tracks,
