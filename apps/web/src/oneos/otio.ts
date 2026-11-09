@@ -141,10 +141,27 @@ function laneStack(t: Json, name: string, lockedTrack: (why: string) => Track): 
 /** Cut's own generated elements (a text, sticker, graphic or effect), as Cut writes them. */
 export const OWN_GENERATOR = /^OpenCut\.(text|sticker|graphic|effect)$/;
 
+/**
+ * files/989 (Mona 2026-11-10: "Build linked audio, lock multicam"): Film's multi-camera clip (a nested stack whose source names its cameras,
+ * `metadata.filmcraft.multicam`, or whose clip names its angle, `metadata.filmcraft.clip.multicam`) is locked in Cut, named, and carried
+ * untouched; Cut builds no multicam. The reason, or null when `c` is not one.
+ */
+function filmMulticam(c: Json): string | null {
+	const fc = isObj(c.metadata) && isObj(c.metadata.filmcraft) ? c.metadata.filmcraft : null;
+	if (!fc || (!isObj(fc.multicam) && !(isObj(fc.clip) && isObj(fc.clip.multicam)))) return null;
+	const cams = isObj(fc.multicam) && Array.isArray(fc.multicam.cameras) ? fc.multicam.cameras.map((x: unknown) => (isObj(x) && typeof x.name === "string" ? x.name : "")).filter(Boolean) : [];
+	const angle = isObj(fc.clip) && isObj(fc.clip.multicam) && typeof fc.clip.multicam.angle === "number" ? fc.clip.multicam.angle : null;
+	const shows = angle !== null && cams[angle] ? `, showing ${cams[angle]}` : "";
+	const name = typeof c.name === "string" && c.name ? ` "${c.name}"` : "";
+	return `it holds Film's multicam clip${name}${cams.length ? ` (cameras: ${cams.join(", ")}${shows})` : ""}, which Cut carries untouched and does not edit`;
+}
+
 /** Why a track item is not something Cut edits (null: it is). */
 function editable(c: unknown): string | null {
 	if (!isObj(c)) return "it holds a non-object";
 	const label = `${String(c.OTIO_SCHEMA)} ${typeof c.name === "string" && c.name ? `"${c.name}"` : ""}`.trim();
+	const multicam = filmMulticam(c);
+	if (multicam) return multicam;
 	if (c.OTIO_SCHEMA !== "Clip.2" && c.OTIO_SCHEMA !== "Gap.1") return `it holds a ${label}, which Cut carries but does not edit`;
 	if ((Array.isArray(c.effects) && c.effects.length) || (Array.isArray(c.markers) && c.markers.length)) return `${label} has effects or markers`;
 	const r = c.source_range;
