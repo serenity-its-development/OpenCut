@@ -1,5 +1,16 @@
 import { drawCssBackground } from "@/gradients";
 import { masksRegistry } from "@/masks";
+import {
+	combineCoverages,
+	isPlainMask,
+	type MaskCoverage,
+	maskExpansion,
+	maskMode,
+	maskOpacity,
+} from "@/masks/combine";
+import { drawnMasks, expandedSplit, planMask } from "@/masks/draw-plan";
+import type { Mask } from "@/masks/types";
+import { applyMaskFeather } from "../mask-feather";
 import { incrementCounter } from "@/diagnostics/render-perf";
 import type { AnyBaseNode } from "../nodes/base-node";
 import type { CanvasRenderer } from "../canvas-renderer";
@@ -254,7 +265,7 @@ async function collectVisualSourceNode({
 		sourceWidth,
 		sourceHeight,
 	});
-	const { mask, strokeLayer } = buildMaskArtifacts({
+	const { mask, strokeLayers } = buildMaskArtifacts({
 		node,
 		renderer,
 		path,
@@ -271,9 +282,7 @@ async function collectVisualSourceNode({
 		effectPassGroups: node.resolved.effectPasses,
 		mask,
 	});
-	if (strokeLayer) {
-		items.push(strokeLayer);
-	}
+	items.push(...strokeLayers);
 }
 
 function collectTextNode({
@@ -369,6 +378,12 @@ function fullCanvasTransform(
 	};
 }
 
+/**
+ * The element's masks as ONE mask texture (OneOS doctrine files/989, "Masks, both ways"): EVERY mask is drawn, top to bottom, combined as
+ * Film combines its masks (`masks/combine.ts`), and each mask's stroke is a layer of its own. One mask that is plain (add, opaque, not
+ * expanded) is drawn as before, feathered and inverted by the compositor; otherwise each mask is feathered here and the texture holds the
+ * combined coverage (the compositor then neither feathers nor inverts it).
+ */
 function buildMaskArtifacts({
 	node,
 	renderer,
@@ -383,152 +398,312 @@ function buildMaskArtifacts({
 	textures: Map<string, TextureUploadDescriptor>;
 }): {
 	mask: LayerMaskDescriptor | null;
-	strokeLayer: FrameItemDescriptor | null;
+	strokeLayers: FrameItemDescriptor[];
 } {
-	const mask = node.params.masks?.[0];
-	if (!mask) {
-		return { mask: null, strokeLayer: null };
+	const drawn = drawnMasks(node.params.masks ?? []);
+	if (!drawn.length) {
+		return { mask: null, strokeLayers: [] };
 	}
-
-	const definition = masksRegistry.get(mask.type);
-
-	if (definition.isActive?.(mask.params) === false) {
-		return { mask: null, strokeLayer: null };
-	}
-
-	let feather = mask.params.feather;
-	const canRenderMaskDirectly = Boolean(definition.renderer.renderMask);
-	const shouldRenderMaskDirectly =
-		canRenderMaskDirectly &&
-		(!definition.renderer.buildPath ||
-			(mask.params.feather > 0 &&
-				definition.renderer.renderMaskHandlesFeather));
-	if (
-		shouldRenderMaskDirectly &&
-		definition.renderer.renderMaskHandlesFeather
-	) {
-		feather = 0;
-	}
-
-	const maskTextureId = `${path}:mask`;
 	const { width: canvasWidth, height: canvasHeight } = renderer;
-	const maskContentHash = `mask:${mask.type}:${JSON.stringify(mask.params)}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}:direct=${shouldRenderMaskDirectly}`;
-	const drawMask: TextureCanvasDrawFn = (ctx) => {
-		const elementMaskCanvas = createOffscreenCanvas({
-			width: Math.round(transform.width),
-			height: Math.round(transform.height),
+	const strokeLayers = drawn.flatMap((mask, index) => {
+		const layer = buildMaskStrokeLayer({
+			mask,
+			index,
+			renderer,
+			path,
+			transform,
+			textures,
 		});
-		const elementMaskCtx = elementMaskCanvas.getContext("2d") as
-			| CanvasRenderingContext2D
-			| OffscreenCanvasRenderingContext2D
-			| null;
-		if (!elementMaskCtx) return;
+		return layer ? [layer] : [];
+	});
+	const maskTextureId = `${path}:mask`;
 
-		if (shouldRenderMaskDirectly && definition.renderer.renderMask) {
-			definition.renderer.renderMask({
-				resolvedParams: mask.params,
-				ctx: elementMaskCtx,
-				width: Math.round(transform.width),
-				height: Math.round(transform.height),
-				feather: mask.params.feather,
-			});
-		} else if (definition.renderer.buildPath) {
-			const path2d = definition.renderer.buildPath({
-				resolvedParams: mask.params,
-				width: transform.width,
-				height: transform.height,
-			});
-			elementMaskCtx.fillStyle = "white";
-			elementMaskCtx.fill(path2d);
-		} else {
-			return;
-		}
+	if (drawn.length === 1 && isPlainMask(drawn[0].params)) {
+		const [mask] = drawn;
+		const plan = planMask(mask);
+		textures.set(maskTextureId, {
+			kind: "rendered",
+			id: maskTextureId,
+			contentHash: `mask:${mask.type}:${JSON.stringify(mask.params)}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}:direct=${plan.direct}`,
+			width: canvasWidth,
+			height: canvasHeight,
+			draw: (ctx) => drawHardMask({ ctx, mask, plan, transform }),
+		});
+		return {
+			mask: {
+				textureId: maskTextureId,
+				feather: plan.feather,
+				inverted: mask.params.inverted,
+			},
+			strokeLayers,
+		};
+	}
 
-		drawTransformedCanvas({ ctx, source: elementMaskCanvas, transform });
-	};
 	textures.set(maskTextureId, {
 		kind: "rendered",
 		id: maskTextureId,
-		contentHash: maskContentHash,
+		contentHash: `masks:${JSON.stringify(drawn.map((m) => [m.type, m.params]))}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}`,
 		width: canvasWidth,
 		height: canvasHeight,
-		draw: drawMask,
+		draw: (ctx) =>
+			drawCombinedMasks({
+				ctx,
+				masks: drawn,
+				transform,
+				width: canvasWidth,
+				height: canvasHeight,
+			}),
 	});
+	return {
+		mask: { textureId: maskTextureId, feather: 0, inverted: false },
+		strokeLayers,
+	};
+}
 
+/** One mask's hard shape (expanded, not yet feathered unless its renderer feathers it) drawn on the canvas where the element is. */
+function drawHardMask({
+	ctx,
+	mask,
+	plan,
+	transform,
+}: {
+	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+	mask: Mask;
+	plan: { direct: boolean };
+	transform: QuadTransformDescriptor;
+}): void {
+	const definition = masksRegistry.get(mask.type);
+	const width = Math.round(transform.width);
+	const height = Math.round(transform.height);
+	const elementMaskCanvas = createOffscreenCanvas({ width, height });
+	const elementMaskCtx = elementMaskCanvas.getContext("2d") as
+		| CanvasRenderingContext2D
+		| OffscreenCanvasRenderingContext2D
+		| null;
+	if (!elementMaskCtx) return;
+	const params =
+		mask.type === "split"
+			? expandedSplit(mask.params, transform.width, transform.height)
+			: mask.params;
+	const expansion = mask.type === "split" ? 0 : maskExpansion(mask.params);
+
+	if (plan.direct && definition.renderer.renderMask) {
+		definition.renderer.renderMask({
+			resolvedParams: params,
+			ctx: elementMaskCtx,
+			width,
+			height,
+			feather: params.feather,
+		});
+		if (expansion !== 0) {
+			if (!definition.renderer.renderStroke) {
+				throw new Error(
+					`mask-expansion-not-drawn: the ${mask.type} mask has no outline to grow or shrink it by`,
+				);
+			}
+			// The outline stroked 2|e| wide, centred: added to the shape it grows it by e, taken from it shrinks it.
+			elementMaskCtx.save();
+			if (expansion < 0)
+				elementMaskCtx.globalCompositeOperation = "destination-out";
+			definition.renderer.renderStroke({
+				resolvedParams: {
+					...params,
+					strokeColor: "#ffffff",
+					strokeWidth: 2 * Math.abs(expansion),
+					strokeAlign: "center",
+				},
+				ctx: elementMaskCtx,
+				width,
+				height,
+			});
+			elementMaskCtx.restore();
+		}
+	} else if (definition.renderer.buildPath) {
+		const path2d = definition.renderer.buildPath({
+			resolvedParams: params,
+			width: transform.width,
+			height: transform.height,
+		});
+		elementMaskCtx.fillStyle = "white";
+		elementMaskCtx.fill(path2d);
+		if (expansion !== 0) {
+			elementMaskCtx.save();
+			elementMaskCtx.lineJoin = "round";
+			elementMaskCtx.lineWidth = 2 * Math.abs(expansion);
+			elementMaskCtx.strokeStyle = "white";
+			if (expansion < 0)
+				elementMaskCtx.globalCompositeOperation = "destination-out";
+			elementMaskCtx.stroke(path2d);
+			elementMaskCtx.restore();
+		}
+	} else {
+		return;
+	}
+
+	drawTransformedCanvas({ ctx, source: elementMaskCanvas, transform });
+}
+
+/** Every mask feathered here and combined top to bottom (`combineCoverages`), drawn as white of that coverage. */
+function drawCombinedMasks({
+	ctx,
+	masks,
+	transform,
+	width,
+	height,
+}: {
+	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+	masks: Mask[];
+	transform: QuadTransformDescriptor;
+	width: number;
+	height: number;
+}): void {
+	const layers: MaskCoverage[] = [];
+	for (const mask of masks) {
+		const plan = planMask(mask);
+		const hard = createOffscreenCanvas({ width, height });
+		const hardCtx = hard.getContext("2d") as
+			| CanvasRenderingContext2D
+			| OffscreenCanvasRenderingContext2D
+			| null;
+		if (!hardCtx) return;
+		drawHardMask({ ctx: hardCtx, mask, plan, transform });
+		const source =
+			plan.feather > 0
+				? applyMaskFeather({
+						maskCanvas: hard,
+						width,
+						height,
+						feather: plan.feather,
+					})
+				: hard;
+		const coverage = alphaOf({ source, width, height });
+		if (!coverage) return;
+		layers.push({
+			coverage,
+			mode: maskMode(mask.params),
+			opacity: maskOpacity(mask.params),
+			inverted: mask.params.inverted,
+		});
+	}
+	const combined = combineCoverages(layers, width * height);
+	if (!combined) return;
+	const image = ctx.createImageData(width, height);
+	for (let i = 0; i < combined.length; i++) {
+		image.data[i * 4] = 255;
+		image.data[i * 4 + 1] = 255;
+		image.data[i * 4 + 2] = 255;
+		image.data[i * 4 + 3] = Math.round(combined[i] * 255);
+	}
+	ctx.putImageData(image, 0, 0);
+}
+
+/** A drawn mask's coverage per pixel (its alpha, 0..1). */
+function alphaOf({
+	source,
+	width,
+	height,
+}: {
+	source: CanvasImageSource;
+	width: number;
+	height: number;
+}): Float32Array | null {
+	const scratch = createOffscreenCanvas({ width, height });
+	const scratchCtx = scratch.getContext("2d") as
+		| CanvasRenderingContext2D
+		| OffscreenCanvasRenderingContext2D
+		| null;
+	if (!scratchCtx) return null;
+	scratchCtx.drawImage(source, 0, 0, width, height);
+	const data = scratchCtx.getImageData(0, 0, width, height).data;
+	const out = new Float32Array(width * height);
+	for (let i = 0; i < out.length; i++) out[i] = data[i * 4 + 3] / 255;
+	return out;
+}
+
+/** One mask's stroke, a layer of its own above the element (the first mask's keeps the texture id it always had). */
+function buildMaskStrokeLayer({
+	mask,
+	index,
+	renderer,
+	path,
+	transform,
+	textures,
+}: {
+	mask: Mask;
+	index: number;
+	renderer: CanvasRenderer;
+	path: string;
+	transform: QuadTransformDescriptor;
+	textures: Map<string, TextureUploadDescriptor>;
+}): FrameItemDescriptor | null {
+	const definition = masksRegistry.get(mask.type);
+	const { width: canvasWidth, height: canvasHeight } = renderer;
 	const hasStroke =
 		mask.params.strokeWidth > 0 &&
 		(definition.renderer.renderStroke ||
 			definition.renderer.buildStrokePath ||
 			definition.renderer.buildPath);
-	let strokeLayer: FrameItemDescriptor | null = null;
-	if (hasStroke) {
-		const strokeTextureId = `${path}:mask-stroke`;
-		const strokeContentHash = `stroke:${mask.type}:${JSON.stringify(mask.params)}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}`;
-		const drawStroke: TextureCanvasDrawFn = (ctx) => {
-			const strokeCanvas = createOffscreenCanvas({
-				width: Math.round(transform.width),
-				height: Math.round(transform.height),
-			});
-			const strokeCtx = strokeCanvas.getContext("2d") as
-				| CanvasRenderingContext2D
-				| OffscreenCanvasRenderingContext2D
-				| null;
-			if (!strokeCtx) return;
+	if (!hasStroke) {
+		return null;
+	}
+	const strokeTextureId =
+		index === 0 ? `${path}:mask-stroke` : `${path}:mask-stroke-${index}`;
+	const strokeContentHash = `stroke:${mask.type}:${JSON.stringify(mask.params)}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}`;
+	const drawStroke: TextureCanvasDrawFn = (ctx) => {
+		const strokeCanvas = createOffscreenCanvas({
+			width: Math.round(transform.width),
+			height: Math.round(transform.height),
+		});
+		const strokeCtx = strokeCanvas.getContext("2d") as
+			| CanvasRenderingContext2D
+			| OffscreenCanvasRenderingContext2D
+			| null;
+		if (!strokeCtx) return;
 
-			if (definition.renderer.renderStroke) {
-				definition.renderer.renderStroke({
+		if (definition.renderer.renderStroke) {
+			definition.renderer.renderStroke({
+				resolvedParams: mask.params,
+				ctx: strokeCtx,
+				width: transform.width,
+				height: transform.height,
+			});
+		} else {
+			const strokePath =
+				definition.renderer.buildStrokePath?.({
 					resolvedParams: mask.params,
-					ctx: strokeCtx,
 					width: transform.width,
 					height: transform.height,
-				});
-			} else {
-				const strokePath =
-					definition.renderer.buildStrokePath?.({
-						resolvedParams: mask.params,
-						width: transform.width,
-						height: transform.height,
-					}) ??
-					definition.renderer.buildPath?.({
-						resolvedParams: mask.params,
-						width: transform.width,
-						height: transform.height,
-					}) ??
-					null;
-				if (!strokePath) return;
-				strokeCtx.strokeStyle = mask.params.strokeColor;
-				strokeCtx.lineWidth = mask.params.strokeWidth;
-				strokeCtx.stroke(strokePath);
-			}
+				}) ??
+				definition.renderer.buildPath?.({
+					resolvedParams: mask.params,
+					width: transform.width,
+					height: transform.height,
+				}) ??
+				null;
+			if (!strokePath) return;
+			strokeCtx.strokeStyle = mask.params.strokeColor;
+			strokeCtx.lineWidth = mask.params.strokeWidth;
+			strokeCtx.stroke(strokePath);
+		}
 
-			drawTransformedCanvas({ ctx, source: strokeCanvas, transform });
-		};
-		textures.set(strokeTextureId, {
-			kind: "rendered",
-			id: strokeTextureId,
-			contentHash: strokeContentHash,
-			width: canvasWidth,
-			height: canvasHeight,
-			draw: drawStroke,
-		});
-		strokeLayer = {
-			type: "layer",
-			textureId: strokeTextureId,
-			transform: fullCanvasTransform(renderer),
-			opacity: 1,
-			blendMode: "normal",
-			effectPassGroups: [],
-			mask: null,
-		};
-	}
-
+		drawTransformedCanvas({ ctx, source: strokeCanvas, transform });
+	};
+	textures.set(strokeTextureId, {
+		kind: "rendered",
+		id: strokeTextureId,
+		contentHash: strokeContentHash,
+		width: canvasWidth,
+		height: canvasHeight,
+		draw: drawStroke,
+	});
 	return {
-		mask: {
-			textureId: maskTextureId,
-			feather,
-			inverted: mask.params.inverted,
-		},
-		strokeLayer,
+		type: "layer",
+		textureId: strokeTextureId,
+		transform: fullCanvasTransform(renderer),
+		opacity: 1,
+		blendMode: "normal",
+		effectPassGroups: [],
+		mask: null,
 	};
 }
 

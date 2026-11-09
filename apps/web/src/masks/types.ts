@@ -19,12 +19,31 @@ export type MaskType =
 	| "text"
 	| "custom";
 
+/**
+ * How a mask combines with the masks above it (OneOS: Film's mask modes, filmcraft `project/src/mask.rs`; `masks/combine.ts`). Every mask
+ * of an element is drawn, top to bottom.
+ */
+export type MaskMode =
+	| "none"
+	| "add"
+	| "subtract"
+	| "intersect"
+	| "lighten"
+	| "darken"
+	| "difference";
+
 export interface BaseMaskParams {
 	feather: number;
 	inverted: boolean;
 	strokeColor: string;
 	strokeWidth: number;
 	strokeAlign: "inside" | "center" | "outside";
+	/** How this mask combines with the masks above it; absent: add (OneOS, Film's masks). */
+	mode?: MaskMode;
+	/** 0..1; absent: 1 (OneOS, Film's mask opacity). */
+	opacity?: number;
+	/** Pixels the shape grows (negative: shrinks) before it is feathered, measured as `feather` is; absent: 0 (OneOS, Film's expansion). */
+	expansion?: number;
 }
 
 export interface SplitMaskParams extends BaseMaskParams {
