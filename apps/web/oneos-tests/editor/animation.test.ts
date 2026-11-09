@@ -41,3 +41,34 @@ test("a colour channel in sRGB eases its sRGB components, as Film does; Cut's ow
 	assert.equal(half(ramp("srgb-linear", 0, 1)), "#bcbcbc", "black to white, halfway in linear light");
 	assert.equal(resolveColorAtTime({ baseColor: "#000000", animations: ramp("srgb", 0, 1) as never, propertyPath: "color", localTime: 120_000 }), "#ffffff");
 });
+
+// Mona 2026-11-09 (files/989): "Film eases linear too". The frames each tool draws between colour keys are the same: filmcraft's
+// `host_open::film_and_cut_draw_every_colour_alike_between_keys` keys the title's colour (Cut's own, linear light) and its background (a
+// colour Film keys anew, Cut's `srgb` channel), pins the file as `fixtures/film-coloured-cut.otio` and the frames Film draws as
+// `fixtures/colour-frames.json`. Cut opens that file and draws every one of those frames with its own code; each matches to the 8 bits
+// a frame holds.
+test("every colour frame Film draws between keys is the frame Cut draws (film-coloured-cut.otio, colour-frames.json)", async () => {
+	const { readFileSync } = await import("node:fs");
+	const { join } = await import("node:path");
+	const { CutSession } = await import("../../src/oneos/cut-session.ts");
+	const FIX = join(import.meta.dirname, "..", "fixtures");
+	const s = CutSession.open("trip.otio", new Uint8Array(readFileSync(join(FIX, "film-coloured-cut.otio"))));
+	assert.equal(s.mode, "cut");
+	const t = (s.project as J).scenes[0].tracks.overlay[0].elements.find((e: J) => e.id === "t1");
+	const frames: Array<{ time: number; color: number[]; "background.color": number[] }> = JSON.parse(readFileSync(join(FIX, "colour-frames.json"), "utf8"));
+	assert.equal(frames.length, 11);
+	assert.equal(t.animations.bindings.color.colorSpace, "srgb-linear");
+	assert.equal(t.animations.bindings["background.color"].colorSpace, "srgb");
+	const byte = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+	for (const f of frames) {
+		for (const path of ["color", "background.color"] as const) {
+			const cut = byte(resolveColorAtTime({ baseColor: path === "color" ? t.color : t.background.color, animations: t.animations, propertyPath: path, localTime: f.time }));
+			const film = f[path].slice(0, 3).map((x) => Math.round(x * 255));
+			assert.ok(cut.every((c, i) => Math.abs(c - film[i]) <= 1), `${path} at ${f.time}: Cut ${cut}, Film ${film}`);
+		}
+	}
+	// Between the keys the two easings differ visibly, so the match above measures something: halfway, linear light is not sRGB.
+	const srgbMid = frames[0].color.slice(0, 3).map((a, i) => Math.round(((a + frames[10].color[i]) / 2) * 255));
+	const mid = frames[5].color.slice(0, 3).map((x) => Math.round(x * 255));
+	assert.ok(mid.some((c, i) => Math.abs(c - srgbMid[i]) > 8), `the title's frame halfway (${mid}) is linear light's, not sRGB's (${srgbMid})`);
+});
