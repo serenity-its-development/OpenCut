@@ -7,6 +7,7 @@ import {
 	maskExpansion,
 	maskMode,
 	maskOpacity,
+	maskUnits,
 } from "@/masks/combine";
 import { drawnMasks, expandedSplit, planMask } from "@/masks/draw-plan";
 import type { Mask } from "@/masks/types";
@@ -270,6 +271,7 @@ async function collectVisualSourceNode({
 		renderer,
 		path,
 		transform,
+		source: { width: sourceWidth, height: sourceHeight },
 		textures,
 	});
 
@@ -389,12 +391,15 @@ function buildMaskArtifacts({
 	renderer,
 	path,
 	transform,
+	source,
 	textures,
 }: {
 	node: VideoNode | ImageNode | StickerNode | GraphicNode;
 	renderer: CanvasRenderer;
 	path: string;
 	transform: QuadTransformDescriptor;
+	/** The element's own pixels (its medium's, or a graphic's drawing size): where a mask measured in clip pixels is drawn and feathered. */
+	source: { width: number; height: number };
 	textures: Map<string, TextureUploadDescriptor>;
 }): {
 	mask: LayerMaskDescriptor | null;
@@ -427,7 +432,7 @@ function buildMaskArtifacts({
 			contentHash: `mask:${mask.type}:${JSON.stringify(mask.params)}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}:direct=${plan.direct}`,
 			width: canvasWidth,
 			height: canvasHeight,
-			draw: (ctx) => drawHardMask({ ctx, mask, plan, transform }),
+			draw: (ctx) => drawHardMask({ ctx, mask, plan, transform, source }),
 		});
 		return {
 			mask: {
@@ -442,7 +447,7 @@ function buildMaskArtifacts({
 	textures.set(maskTextureId, {
 		kind: "rendered",
 		id: maskTextureId,
-		contentHash: `masks:${JSON.stringify(drawn.map((m) => [m.type, m.params]))}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}`,
+		contentHash: `masks:${JSON.stringify(drawn.map((m) => [m.type, m.params]))}:${transformHash(transform)}:${canvasWidth}x${canvasHeight}:source=${source.width}x${source.height}`,
 		width: canvasWidth,
 		height: canvasHeight,
 		draw: (ctx) =>
@@ -450,6 +455,7 @@ function buildMaskArtifacts({
 				ctx,
 				masks: drawn,
 				transform,
+				source,
 				width: canvasWidth,
 				height: canvasHeight,
 			}),
@@ -460,21 +466,31 @@ function buildMaskArtifacts({
 	};
 }
 
-/** One mask's hard shape (expanded, not yet feathered unless its renderer feathers it) drawn on the canvas where the element is. */
+/**
+ * One mask's shape, expanded, drawn on the canvas where the element is. A mask measured in the canvas's pixels (Cut's own) is drawn at the
+ * element's drawn size and feathered afterwards on the canvas; one measured in clip pixels (Film's) is drawn and feathered at the element's
+ * own pixels, then drawn through the element's scale and rotation, as Film draws a clip's masks before its Motion, so its feather follows
+ * the element's scale frame by frame, per axis.
+ */
 function drawHardMask({
 	ctx,
 	mask,
 	plan,
 	transform,
+	source,
 }: {
 	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 	mask: Mask;
-	plan: { direct: boolean };
+	plan: { direct: boolean; feather: number };
 	transform: QuadTransformDescriptor;
+	source: { width: number; height: number };
 }): void {
 	const definition = masksRegistry.get(mask.type);
-	const width = Math.round(transform.width);
-	const height = Math.round(transform.height);
+	const clip = maskUnits(mask.params) === "clip";
+	const drawnWidth = clip ? source.width : transform.width;
+	const drawnHeight = clip ? source.height : transform.height;
+	const width = Math.round(drawnWidth);
+	const height = Math.round(drawnHeight);
 	const elementMaskCanvas = createOffscreenCanvas({ width, height });
 	const elementMaskCtx = elementMaskCanvas.getContext("2d") as
 		| CanvasRenderingContext2D
@@ -483,7 +499,7 @@ function drawHardMask({
 	if (!elementMaskCtx) return;
 	const params =
 		mask.type === "split"
-			? expandedSplit(mask.params, transform.width, transform.height)
+			? expandedSplit(mask.params, drawnWidth, drawnHeight)
 			: mask.params;
 	const expansion = mask.type === "split" ? 0 : maskExpansion(mask.params);
 
@@ -521,8 +537,8 @@ function drawHardMask({
 	} else if (definition.renderer.buildPath) {
 		const path2d = definition.renderer.buildPath({
 			resolvedParams: params,
-			width: transform.width,
-			height: transform.height,
+			width: drawnWidth,
+			height: drawnHeight,
 		});
 		elementMaskCtx.fillStyle = "white";
 		elementMaskCtx.fill(path2d);
@@ -540,7 +556,16 @@ function drawHardMask({
 		return;
 	}
 
-	drawTransformedCanvas({ ctx, source: elementMaskCanvas, transform });
+	const drawnMask =
+		clip && plan.feather > 0
+			? applyMaskFeather({
+					maskCanvas: elementMaskCanvas,
+					width,
+					height,
+					feather: plan.feather,
+				})
+			: elementMaskCanvas;
+	drawTransformedCanvas({ ctx, source: drawnMask, transform });
 }
 
 /** Every mask feathered here and combined top to bottom (`combineCoverages`), drawn as white of that coverage. */
@@ -548,12 +573,14 @@ function drawCombinedMasks({
 	ctx,
 	masks,
 	transform,
+	source,
 	width,
 	height,
 }: {
 	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 	masks: Mask[];
 	transform: QuadTransformDescriptor;
+	source: { width: number; height: number };
 	width: number;
 	height: number;
 }): void {
@@ -566,9 +593,9 @@ function drawCombinedMasks({
 			| OffscreenCanvasRenderingContext2D
 			| null;
 		if (!hardCtx) return;
-		drawHardMask({ ctx: hardCtx, mask, plan, transform });
-		const source =
-			plan.feather > 0
+		drawHardMask({ ctx: hardCtx, mask, plan, transform, source });
+		const feathered =
+			plan.feather > 0 && maskUnits(mask.params) === "canvas"
 				? applyMaskFeather({
 						maskCanvas: hard,
 						width,
@@ -576,7 +603,7 @@ function drawCombinedMasks({
 						feather: plan.feather,
 					})
 				: hard;
-		const coverage = alphaOf({ source, width, height });
+		const coverage = alphaOf({ source: feathered, width, height });
 		if (!coverage) return;
 		layers.push({
 			coverage,

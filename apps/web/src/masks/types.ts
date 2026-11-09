@@ -44,6 +44,11 @@ export interface BaseMaskParams {
 	opacity?: number;
 	/** Pixels the shape grows (negative: shrinks) before it is feathered, measured as `feather` is; absent: 0 (OneOS, Film's expansion). */
 	expansion?: number;
+	/**
+	 * Where `feather` and `expansion` are measured: the canvas's pixels (Cut's own; absent) or the element's own pixels, Film's clip pixels
+	 * (a mask Film drew), drawn through the element's scale frame by frame as Film draws a clip's masks before its Motion.
+	 */
+	units?: "canvas" | "clip";
 }
 
 export interface SplitMaskParams extends BaseMaskParams {

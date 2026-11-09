@@ -70,3 +70,10 @@ test("coverages combine top to bottom: opacity and inversion first, the first ma
 	near(combineCoverages([{ coverage: right, mode: "none", opacity: 1, inverted: false }, { coverage: box, mode: "intersect", opacity: 1, inverted: false }], 4), [1, 1, 0, 0]);
 	assert.equal(combineCoverages([{ coverage: box, mode: "none", opacity: 1, inverted: false }], 4), null, "no mask drawn: not masked");
 });
+
+test("a mask measured in clip pixels (Film's) is feathered at the element's own pixels, so it is not the compositor's plain mask", () => {
+	const rect = beach.masks.find((m: J) => m.type === "rectangle");
+	assert.ok(isPlainMask({ ...rect.params, units: "clip" }), "unfeathered, where it is measured does not matter");
+	assert.ok(!isPlainMask({ ...rect.params, units: "clip", feather: 6 }), "feathered in clip pixels: drawn and feathered before the element's scale");
+	assert.ok(isPlainMask({ ...rect.params, units: "canvas", feather: 6 }), "feathered in the canvas's pixels: the compositor feathers it");
+});

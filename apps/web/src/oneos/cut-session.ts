@@ -500,10 +500,19 @@ export class CutSession {
 		}
 		return {
 			OTIO_SCHEMA: "Clip.2", name: e.name, source_range: range, effects: [], markers: [], enabled: true,
-			media_references: { DEFAULT_MEDIA: { OTIO_SCHEMA: "ExternalReference.1", name: m.name, target_url: url, available_range: null, available_image_bounds: null, metadata: {} } },
+			media_references: { DEFAULT_MEDIA: { OTIO_SCHEMA: "ExternalReference.1", name: m.name, target_url: url, available_range: null, available_image_bounds: null, metadata: mediumPixels(m) } },
 			active_media_reference_key: "DEFAULT_MEDIA", metadata: { opencut: { element: look } },
 		};
 	}
+}
+
+/**
+ * A picture's pixel size on the reference Cut writes for it (`metadata.opencut.media`), so another tool converts what is measured in it (a
+ * mask Film draws in clip pixels, Cut's in fractions of the element; files/989 "Masks, both ways"). In a Cut project the root's media list
+ * already holds it; in a carried file the reference is where it rides. A sound has none.
+ */
+function mediumPixels(m: CutMedia): J {
+	return typeof m.width === "number" && typeof m.height === "number" ? { opencut: { media: { width: m.width, height: m.height } } } : {};
 }
 
 /** A start and a duration at `rate` when both are whole there, else both in Cut's exact ticks. */

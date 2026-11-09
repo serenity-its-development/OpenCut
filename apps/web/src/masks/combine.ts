@@ -25,12 +25,18 @@ export const maskOpacity = (params: BaseMaskParams): number =>
 	params.opacity ?? 1;
 export const maskExpansion = (params: BaseMaskParams): number =>
 	params.expansion ?? 0;
+export const maskUnits = (params: BaseMaskParams): "canvas" | "clip" =>
+	params.units ?? "canvas";
 
-/** A mask that draws as Cut drew its one mask before: add, fully opaque, not expanded (inverted and feathered by the compositor). */
+/**
+ * A mask that draws as Cut drew its one mask before: add, fully opaque, not expanded, its feather in the canvas's pixels (inverted and
+ * feathered by the compositor).
+ */
 export const isPlainMask = (params: BaseMaskParams): boolean =>
 	maskMode(params) === "add" &&
 	maskOpacity(params) === 1 &&
-	maskExpansion(params) === 0;
+	maskExpansion(params) === 0 &&
+	(maskUnits(params) === "canvas" || params.feather === 0);
 
 /** Combine the coverage `a` of the masks above with this mask's coverage `m` (Film's `MaskMode::combine`). */
 export function combineMode(mode: MaskMode, a: number, m: number): number {
