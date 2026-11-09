@@ -26,7 +26,7 @@ import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./
 
 type J = Record<string, any>;
 
-export type CutSaveCode = "keyframes-not-in-film" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
+export type CutSaveCode = "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
 
 export class CutSaveRefusal extends Error {
 	readonly code: CutSaveCode;
@@ -491,7 +491,10 @@ export class CutSession {
 				// Film's volume keyframes are dB over the clip's gain: a new gain moves them so the sound Cut set stays.
 				const wasAt = gainWas !== null && gainWas !== gain ? { ...was, animations: undefined } : was;
 				const effects = writeFilmLook(before, kind, frame, gain, wasAt, e);
-				if (typeof effects === "string") throw new CutSaveRefusal("keyframes-not-in-film", effects.replace(/^keyframes-not-in-film: /, ""));
+				if (typeof effects === "string") {
+					const code = /^(keyframes-not-in-film|mask-not-in-film|mask-size-unknown): /.exec(effects)?.[1] as CutSaveCode | undefined;
+					throw new CutSaveRefusal(code ?? "keyframes-not-in-film", effects.replace(/^[a-z-]+: /, ""));
+				}
 				c.metadata.filmcraft = { ...c.metadata.filmcraft, effects };
 				for (const k of FILM_OWNED(kind)) delete look[k];
 			}

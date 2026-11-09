@@ -13,11 +13,13 @@
  * | Opacity opacity (percent) | `opacity` (0..1) |
  * | each Gaussian Blur (blurriness) | a blur effect (`intensity`, the blur Film's cut map uses) and its `effects.<id>.params.intensity` channel |
  * | an audio clip's Volume level keyframes (dB over its gain) | the `volume` channel (dB) |
+ * | the masks on its Opacity (paths and texts in clip pixels) | the element's masks (`film-masks.ts`) |
  *
  * A save writes back ONLY what Cut changed (the element now against the element as it opened), in Film's shape: a value as Film's value,
  * a channel as Film's keyframes. What Film's keyframes cannot hold is refused by name, nothing written (`keyframes-not-in-film`). Every
  * other effect, parameter and field of Film's on the clip is carried untouched. Pure: no DOM, no storage, no network.
  */
+import { cutMasksOf, filmMasks, filmMasksFrom, filmMasksLock, mediumBox } from "./film-masks.ts";
 import { type CutKey, type FilmKey, cutToFilm, filmToCut, sameCurve } from "./keys.ts";
 
 type J = Record<string, any>;
@@ -155,18 +157,22 @@ export function filmLook(clip: J, kind: string, f: Frame, gain: number): J | str
 		const op = fx(effects, "opacity");
 		if (op) look.opacity = round9(num(op.params?.opacity, 100) / 100);
 		look.effects = blurs(effects).map((b, i) => ({ id: ids[i], type: "blur", params: { intensity: round9(num(b.params?.blurriness, 0) / blurK(f)) }, enabled: b.enabled !== false }));
+		const box = mediumBox(clip);
+		const why = filmMasksLock(effects, box, name);
+		if (why) return why;
+		if (box && filmMasks(effects).length) look.masks = cutMasksOf(effects, box);
 	}
 	if (Object.keys(anim.bindings).length) look.animations = anim;
 	return look;
 }
 
 /** The fields of Cut's element that are Film's on Film's clip (written back by `writeFilmLook`, never as Cut's own beside them). */
-export const FILM_OWNED = (kind: string) => (kind === "audio" ? ["animations"] : ["transform", "opacity", "effects", "animations"]);
+export const FILM_OWNED = (kind: string) => (kind === "audio" ? ["animations"] : ["transform", "opacity", "effects", "animations", "masks"]);
 
 /**
  * Film's effects on its clip with Cut's edits written in, in Film's shape: `was` is the element as it opened (or was last saved), `now` as
  * the person left it. Only a value or channel that changed is rewritten; the rest of Film's effects come back exactly. A string is why
- * Film cannot hold an edit (the save is refused by name, `keyframes-not-in-film`).
+ * Film cannot hold an edit, `code: why` (the save is refused by name: `keyframes-not-in-film`, `mask-not-in-film`, `mask-size-unknown`).
  */
 export function writeFilmLook(clip: J, kind: string, f: Frame, gain: number, was: J, now: J): J[] | string {
 	const effects = clone(filmEffects(clip) ?? []);
@@ -241,6 +247,15 @@ export function writeFilmLook(clip: J, kind: string, f: Frame, gain: number, was
 		}
 		const op = fx(effects, "opacity");
 		if (op && was.opacity !== now.opacity) op.params.opacity = { ...op.params.opacity, value: { Float: round9((now.opacity ?? 1) * 100) } };
+		// Cut's masks on Film's clip are Film's masks on its Opacity: written in Film's shape, only what Cut changed.
+		const wasMasks: J[] = was.masks ?? [], nowMasks: J[] = now.masks ?? [];
+		if (json(wasMasks) !== json(nowMasks)) {
+			if (!op) return `mask-not-in-film: Film's clip "${name}" has no Opacity to hold Cut's masks`;
+			const masks = filmMasksFrom(filmMasks(effects), wasMasks, nowMasks, mediumBox(clip), name);
+			if (typeof masks === "string") return masks;
+			if (masks.length) op.masks = masks;
+			else delete op.masks;
+		}
 	}
 	return effects;
 }
