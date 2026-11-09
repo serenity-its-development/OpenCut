@@ -114,6 +114,8 @@ interface BaseTimelineElement {
 	trimEnd: MediaTime;
 	sourceDuration?: MediaTime;
 	animations?: ElementAnimations;
+	/** OneOS (files/989): elements sharing this label are linked (a clip's picture and its sound), edited as one (`timeline/linked.ts`). */
+	link?: string;
 }
 
 export interface VideoElement extends BaseTimelineElement {

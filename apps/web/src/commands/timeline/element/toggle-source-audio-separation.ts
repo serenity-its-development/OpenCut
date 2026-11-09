@@ -71,11 +71,14 @@ export class ToggleSourceAudioSeparationCommand extends Command {
 			return;
 		}
 
+		// OneOS (files/989, "Build linked audio"): the extracted sound is linked to its picture, as Film links a clip's video and audio.
+		const link = videoElement.link ?? generateUUID();
 		const separatedAudioElement = {
 			...buildSeparatedAudioElement({
 				sourceElement: videoElement,
 			}),
 			id: generateUUID(),
+			link,
 		};
 		const placementResult = resolveTrackPlacement({
 			tracks: this.savedState,
@@ -106,6 +109,7 @@ export class ToggleSourceAudioSeparationCommand extends Command {
 				trackId: this.params.trackId,
 				elementId: this.params.elementId,
 				isSourceAudioEnabled: false,
+				link,
 			}),
 		);
 	}
@@ -125,11 +129,13 @@ function updateSourceAudioEnabled({
 	trackId,
 	elementId,
 	isSourceAudioEnabled,
+	link,
 }: {
 	tracks: SceneTracks;
 	trackId: string;
 	elementId: string;
 	isSourceAudioEnabled: boolean;
+	link?: string;
 }): SceneTracks {
 	return updateElementInSceneTracks({
 		tracks,
@@ -140,6 +146,7 @@ function updateSourceAudioEnabled({
 		update: (element) => ({
 			...element,
 			isSourceAudioEnabled,
+			...(link ? { link } : {}),
 		}),
 	});
 }

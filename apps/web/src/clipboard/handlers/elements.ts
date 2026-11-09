@@ -1,5 +1,7 @@
 import { PasteCommand } from "@/commands/timeline";
 import type { ClipboardHandler } from "../types";
+import { relinker } from "@/timeline/linked";
+import { generateUUID } from "@/utils/id";
 
 export const ElementsClipboardHandler = {
 	type: "elements",
@@ -40,9 +42,11 @@ export const ElementsClipboardHandler = {
 			return null;
 		}
 
+		// OneOS (files/989, "Build linked audio"): each paste's copies of linked elements are partners of each other only.
+		const relink = relinker(generateUUID);
 		return new PasteCommand({
 			time: context.time,
-			clipboardItems: entry.items,
+			clipboardItems: entry.items.map((item) => ({ ...item, element: relink(item.element) })),
 		});
 	},
 } satisfies ClipboardHandler<"elements">;

@@ -5,6 +5,7 @@ import {
 } from "@/commands/base-command";
 import type { SceneTracks, TimelineElement } from "@/timeline";
 import { generateUUID } from "@/utils/id";
+import { relinker, withLinked } from "@/timeline/linked";
 import { EditorCore } from "@/core";
 import { isRetimableElement } from "@/timeline";
 import { splitAnimationsAtTime } from "@/animation";
@@ -46,13 +47,16 @@ export class SplitElementsCommand extends Command {
 		const editor = EditorCore.getInstance();
 		this.savedState = editor.scenes.getActiveScene().tracks;
 		this.rightSideElements = [];
+		// OneOS (files/989, "Build linked audio"): a split cuts an element's linked partners too, and the right halves are partners of each other.
+		const targets = withLinked({ tracks: this.savedState, refs: this.elements });
+		const relink = relinker(generateUUID);
 
 		const splitTrack = <
 			TTrack extends { id: string; elements: TimelineElement[] },
 		>(
 			track: TTrack,
 		): TTrack => {
-			const elementsToSplit = this.elements.filter(
+			const elementsToSplit = targets.filter(
 				(target) => target.trackId === track.id,
 			);
 
@@ -173,7 +177,7 @@ export class SplitElementsCommand extends Command {
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 						},
 						{
-							...element,
+							...relink(element),
 							id: secondElementId,
 							startTime: this.splitTime,
 							duration: rightVisibleDuration,

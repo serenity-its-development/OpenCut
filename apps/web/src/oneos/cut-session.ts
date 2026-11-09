@@ -26,7 +26,7 @@ import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./
 
 type J = Record<string, any>;
 
-export type CutSaveCode = "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
+export type CutSaveCode = "sound-not-in-film" | "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
 
 export class CutSaveRefusal extends Error {
 	readonly code: CutSaveCode;
@@ -189,6 +189,14 @@ export class CutSession {
 							// A Film clip's gain (metadata.filmcraft.gain_db) IS Cut's volume: both are decibels, so Cut edits Film's own value.
 							const gain = filmGain(it.raw);
 							if (gain !== null) look.volume = gain;
+							// Film's link of a clip's picture and sound (metadata.filmcraft.link) IS Cut's (files/989, "Build linked audio"), and Film's
+							// picture holds no sound of its own (its sound is its linked audio clip), so Cut plays none from it.
+							if (filmEffects(it.raw)) {
+								delete look.link;
+								const link = filmLink(it.raw);
+								if (link !== null) look.link = String(link);
+								if (!audio) look.isSourceAudioEnabled = false;
+							}
 							// Film's look on its clip (Motion, Opacity, Gaussian Blur, keyframes) IS the element's: Cut edits Film's own values.
 							if (filmEffects(it.raw) && frame) {
 								const kind = audio ? "audio" : look.type === "image" ? "image" : "video";
@@ -292,8 +300,21 @@ export class CutSession {
 		this.baseline(project, media);
 	}
 
+	/** In a carried save: a link label as the number Film holds (a number Cut read from Film is kept; a label Cut made is numbered above all). */
+	private linkNo: (label: unknown) => number | null = () => null;
+
 	private carriedSave(p: J, media: CutMedia[], clips: Map<string, J>, origins: Map<string, Origin>, sceneAt: Map<string, number>): J {
 		const base = this.base;
+		const numeric = (l: unknown) => typeof l === "string" && /^(0|[1-9][0-9]{0,14})$/.test(l);
+		const labels = (p.scenes as J[]).flatMap((sc) => allTracks(sc).flatMap((t) => (t.elements as J[]).map((e) => e.link)));
+		let top = Math.max(0, ...fileLinks(this.raw), ...labels.filter(numeric).map(Number));
+		const made = new Map<string, number>();
+		this.linkNo = (l) => {
+			if (typeof l !== "string" || !l) return null;
+			if (numeric(l)) return Number(l);
+			if (!made.has(l)) made.set(l, ++top);
+			return made.get(l) as number;
+		};
 		let raw = clone(this.raw);
 		const timelinesOf = (r: J): J[] => (r.OTIO_SCHEMA === "Timeline.1" ? [r] : r.children.filter((c: unknown) => isObj(c) && c.OTIO_SCHEMA === "Timeline.1"));
 		const roots = timelinesOf(raw);
@@ -484,6 +505,13 @@ export class CutSession {
 				c.metadata.filmcraft = { ...c.metadata.filmcraft, gain_db: typeof e.volume === "number" ? e.volume : 0 };
 				delete look.volume;
 			}
+			// Film's clip: its link is Film's own (a number Film reads as a label shared by partners), and its picture plays no sound of its own.
+			if (filmEffects(before)) {
+				if (e.type === "video" && e.isSourceAudioEnabled !== false) throw new CutSaveRefusal("sound-not-in-film", `Film's picture "${e.name}" holds no sound of its own (its sound is its linked audio clip), so Cut cannot play the picture's sound beside it`);
+				c.metadata.filmcraft = { ...c.metadata.filmcraft, link: this.linkNo(e.link) };
+				delete look.link;
+				delete look.isSourceAudioEnabled;
+			}
 			// Film's look on its clip: what Cut changed is written in Film's shape (its effects and their keyframes), never as Cut's own beside it.
 			if (filmEffects(before) && frame && was) {
 				const kind = e.type === "audio" ? "audio" : e.type === "image" ? "image" : "video";
@@ -550,6 +578,21 @@ function filmGain(c: J): number | null {
 	const g = isObj(c?.metadata?.filmcraft) ? c.metadata.filmcraft.gain_db : undefined;
 	return typeof g === "number" && Number.isFinite(g) ? g : null;
 }
+/** A Film clip's link (metadata.filmcraft.link: a number its partners share), or null when it has none. */
+function filmLink(c: J): number | null {
+	const l = isObj(c?.metadata?.filmcraft) ? c.metadata.filmcraft.link : undefined;
+	return typeof l === "number" && Number.isSafeInteger(l) && l >= 0 ? l : null;
+}
+/** Every link number the file's clips hold, at any depth. */
+function fileLinks(v: unknown, out: number[] = []): number[] {
+	if (Array.isArray(v)) for (const x of v) fileLinks(x, out);
+	else if (isObj(v)) {
+		if (v.OTIO_SCHEMA === "Clip.2") { const l = filmLink(v); if (l !== null) out.push(l); }
+		for (const x of Object.values(v)) if (typeof x === "object") fileLinks(x, out);
+	}
+	return out;
+}
+
 /** A Film track's mute (metadata.filmcraft.muted), or null when the track is not Film's. */
 function filmSwitch(t: J): boolean | null {
 	const m = isObj(t?.metadata?.filmcraft) ? t.metadata.filmcraft.muted : undefined;

@@ -7,6 +7,7 @@ import type {
 	SelectedMaskPointSelection,
 } from "@/selection/editor-selection";
 import type { ElementRef } from "@/timeline/types";
+import { withLinked } from "@/timeline/linked";
 
 export class SelectionManager {
 	private selectedElements: ElementRef[] = [];
@@ -15,9 +16,7 @@ export class SelectionManager {
 	private selectedMaskPoints: SelectedMaskPointSelection | null = null;
 	private listeners = new Set<() => void>();
 
-	constructor(editor: EditorCore) {
-		void editor;
-	}
+	constructor(private readonly editor: EditorCore) {}
 
 	getSelectedElements(): ElementRef[] {
 		return this.selectedElements;
@@ -62,8 +61,10 @@ export class SelectionManager {
 		};
 	}
 
+	/** OneOS (files/989, "Build linked audio"): selecting an element selects its linked partners too (`timeline/linked.ts`). */
 	setSelectedElements({ elements }: { elements: ElementRef[] }): void {
-		this.selectedElements = elements;
+		const tracks = this.editor.scenes.getActiveSceneOrNull()?.tracks ?? null;
+		this.selectedElements = tracks && elements.length ? withLinked({ tracks, refs: elements }) : elements;
 		this.selectedKeyframes = [];
 		this.keyframeSelectionAnchor = null;
 		this.selectedMaskPoints = null;

@@ -5,6 +5,7 @@ import {
 } from "@/commands/base-command";
 import type { SceneTracks, TimelineElement } from "@/timeline";
 import { generateUUID } from "@/utils/id";
+import { relinker, withLinked } from "@/timeline/linked";
 import { EditorCore } from "@/core";
 import { applyPlacement, resolveTrackPlacement } from "@/timeline/placement";
 import { cloneAnimations } from "@/animation";
@@ -30,13 +31,16 @@ export class DuplicateElementsCommand extends Command {
 		this.duplicatedElements = [];
 
 		let updatedTracks = this.savedState;
+		// OneOS (files/989, "Build linked audio"): a duplicate copies an element's linked partners too, the copies partners of each other.
+		const targets = withLinked({ tracks: this.savedState, refs: this.elements });
+		const relink = relinker(generateUUID);
 
 		for (const track of [
 			...this.savedState.overlay,
 			this.savedState.main,
 			...this.savedState.audio,
 		]) {
-			const elementsToDuplicate = this.elements.filter(
+			const elementsToDuplicate = targets.filter(
 				(elementEntry) => elementEntry.trackId === track.id,
 			);
 
@@ -57,7 +61,7 @@ export class DuplicateElementsCommand extends Command {
 				const newId = generateUUID();
 				newTrackElements.push(
 					buildDuplicateElement({
-						element,
+						element: relink(element),
 						id: newId,
 						startTime: element.startTime,
 					}),

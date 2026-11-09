@@ -2,6 +2,7 @@ import { Command, type CommandResult } from "@/commands/base-command";
 import type { SceneTracks } from "@/timeline";
 import { EditorCore } from "@/core";
 import type { TimelineTrack } from "@/timeline";
+import { withLinked } from "@/timeline/linked";
 
 function removeTrackElements<TTrack extends TimelineTrack>({
 	track,
@@ -37,17 +38,19 @@ export class DeleteElementsCommand extends Command {
 	execute(): CommandResult | undefined {
 		const editor = EditorCore.getInstance();
 		this.savedState = editor.scenes.getActiveScene().tracks;
+		// OneOS (files/989, "Build linked audio"): deleting an element deletes its linked partners too.
+		const elements = withLinked({ tracks: this.savedState, refs: this.elements });
 
 		const updatedTracks: SceneTracks = {
 			overlay: this.savedState.overlay.map((track) =>
-				removeTrackElements({ track, elements: this.elements }),
+				removeTrackElements({ track, elements }),
 			),
 			main: removeTrackElements({
 				track: this.savedState.main,
-				elements: this.elements,
+				elements,
 			}),
 			audio: this.savedState.audio.map((track) =>
-				removeTrackElements({ track, elements: this.elements }),
+				removeTrackElements({ track, elements }),
 			),
 		};
 

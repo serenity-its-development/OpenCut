@@ -42,7 +42,7 @@ test("an edit Cut makes to Film's file is pinned as the file Film opens next (cu
 		{ id: "t1", type: "text", name: "Title", content: "Trip", fontSize: 64, fontFamily: "Inter", color: "#ffffff", background: { enabled: false, color: "#000000" }, textAlign: "center", fontWeight: "bold", fontStyle: "normal", textDecoration: "none", hidden: false, transform: { scaleX: 1, scaleY: 1, position: { x: 0, y: 0 }, rotate: 0 }, opacity: 1, startTime: 0, duration: TICKS, trimStart: 0, trimEnd: 0 },
 	] });
 	p.scenes.push({ id: "teaser", name: "Teaser", isMain: false, createdAt: "2026-11-09T00:00:00.000Z", updatedAt: "2026-11-09T00:00:00.000Z", bookmarks: [{ time: TICKS, note: "hook" }],
-		tracks: { main: { ...JSON.parse(JSON.stringify(main)), id: "teaser-main", elements: main.elements.slice(0, 1).map((e: object) => ({ ...e, id: "tz1", startTime: 0 })) }, overlay: [], audio: [] } });
+		tracks: { main: { ...JSON.parse(JSON.stringify(main)), id: "teaser-main", elements: main.elements.slice(0, 1).map((e: object) => ({ ...e, id: "tz1", startTime: 0, link: undefined })) }, overlay: [], audio: [] } });
 	const out = s.save(p, s.media);
 	const golden = join(FIX, "cut-edited.otio");
 	if (process.env.CUT_BLESS) writeFileSync(golden, out);
