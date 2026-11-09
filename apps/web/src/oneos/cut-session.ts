@@ -23,6 +23,7 @@ import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMedia
 import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cut-otio.ts";
 import { carry, foreignOf, type Foreign } from "./foreign.ts";
 import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./film-look.ts";
+import { PER_CUT_TICK } from "./keys.ts";
 
 type J = Record<string, any>;
 
@@ -196,6 +197,9 @@ export class CutSession {
 								const link = filmLink(it.raw);
 								if (link !== null) look.link = String(link);
 								if (!audio) look.isSourceAudioEnabled = false;
+								// The Film clip the element is: a copy of it (a split's right half, a duplicate, a paste) carries this, so it is written as a
+								// copy of Film's clip in Film's shape, keeping Film's look and link (files/989, measured 2026-11-10).
+								look.filmClip = id;
 							}
 							// Film's look on its clip (Motion, Opacity, Gaussian Blur, keyframes) IS the element's: Cut edits Film's own values.
 							if (filmEffects(it.raw) && frame) {
@@ -425,6 +429,7 @@ export class CutSession {
 		if (!lanes.length) lanes.push([]);
 		const wasLanes: J[][] = !before ? [] : before.OTIO_SCHEMA === "Stack.1" ? (before.children as J[]).map((l) => l.children as J[]) : [before.children as J[]];
 		const baseEls = new Map((this.base?.tracks.get(t.id) ?? []).map((x) => { const e = JSON.parse(x); return [e.id as string, x]; }));
+		const filmTrack = !!before && !isObj(before.metadata?.opencut?.track);
 		const laneChildren = (l: J[], was: J[]): J[] => {
 			const gaps: Array<{ at: number; dur: number; raw: J }> = [];
 			let at = 0;
@@ -441,8 +446,18 @@ export class CutSession {
 					const same = gaps.find((x) => x.at === at && x.dur === g);
 					out.push(same ? same.raw : { OTIO_SCHEMA: "Gap.1", name: "", source_range: timeRange(0, g, rate), effects: [], markers: [], enabled: true, metadata: {} });
 				}
-				const prior = this.clipOf.get(e.id);
-				const was = baseEls.get(e.id);
+				let prior = this.clipOf.get(e.id);
+				let was = baseEls.get(e.id);
+				// A copy of Film's clip (a split's right half, a duplicate, a paste) on one of Film's own tracks is Film's clip: written from it, in
+				// Film's shape. Elsewhere (a track or scene of Cut's) it is Cut's element, in Cut's shape.
+				if (!prior && typeof e.filmClip === "string" && filmTrack) {
+					const origin = this.clipOf.get(e.filmClip);
+					const base = this.baseElement(e.filmClip);
+					if (origin && base && filmEffects(origin)) {
+						prior = filmCopy(origin, e.trimStart - JSON.parse(base).trimStart);
+						was = base;
+					}
+				}
 				const c = prior && was === json(e) ? prior : this.clip(e, prior, rate, mediaById, was ? JSON.parse(was) : null, frame);
 				clips.set(e.id, c);
 				out.push(c);
@@ -462,6 +477,15 @@ export class CutSession {
 			OTIO_SCHEMA: "Stack.1", name: t.name, source_range: null, effects: [], markers: [], enabled: true, metadata,
 			children: lanes.map((l, i) => ({ ...plain(laneChildren(l, wasLanes[i] ?? []), { opencut: { lane: i } }), name: `${t.name} (lane ${i + 1})` })),
 		};
+	}
+
+	/** An element as the file held it when opened (or last saved), on any track. */
+	private baseElement(id: string): string | undefined {
+		for (const els of this.base?.tracks.values() ?? []) {
+			const hit = els.find((x) => JSON.parse(x).id === id);
+			if (hit) return hit;
+		}
+		return undefined;
 	}
 
 	private checkCarried(e: J, mediaById: Map<string, CutMedia>): void {
@@ -492,7 +516,7 @@ export class CutSession {
 		const url = mediaUrl(m.file.id, m.file.version);
 		// Where the medium states its length, the trim's end and the source's length are read from it; else they ride with the element.
 		const derived = isObj(before?.media_references?.DEFAULT_MEDIA?.available_range);
-		const look = Object.fromEntries(Object.entries(e).filter(([k]) => !MEDIA_CORE.has(k) && !(derived && (k === "trimEnd" || k === "sourceDuration"))));
+		const look = Object.fromEntries(Object.entries(e).filter(([k]) => !MEDIA_CORE.has(k) && k !== "filmClip" && !(derived && (k === "trimEnd" || k === "sourceDuration"))));
 		if (e.type === "audio") delete look.sourceType;
 		if (before) {
 			const c = clone(before);
@@ -578,6 +602,22 @@ function filmGain(c: J): number | null {
 	const g = isObj(c?.metadata?.filmcraft) ? c.metadata.filmcraft.gain_db : undefined;
 	return typeof g === "number" && Number.isFinite(g) ? g : null;
 }
+/**
+ * A copy of Film's clip `c` starting `offset` of Cut's ticks later in its medium (a split's right half; 0 for a duplicate or paste): Film's
+ * data kept, its keyframes (clip time) moved by the offset so each stays at its moment of the medium (Film's exact mirrors of its times are
+ * kept as for a trim of Film's clip: Film reads them only while they still say the clip's time).
+ */
+function filmCopy(c: J, offset: number): J {
+	const out = clone(c);
+	const fc = out.metadata.filmcraft;
+	for (const e of Array.isArray(fc.effects) ? fc.effects : []) {
+		for (const p of Object.values(isObj(e.params) ? e.params : {}) as J[]) {
+			for (const k of Array.isArray(p?.keyframes) ? p.keyframes : []) k.time -= offset * PER_CUT_TICK;
+		}
+	}
+	return out;
+}
+
 /** A Film clip's link (metadata.filmcraft.link: a number its partners share), or null when it has none. */
 function filmLink(c: J): number | null {
 	const l = isObj(c?.metadata?.filmcraft) ? c.metadata.filmcraft.link : undefined;
