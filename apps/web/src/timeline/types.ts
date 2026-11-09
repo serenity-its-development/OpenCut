@@ -27,7 +27,7 @@ export interface TScene {
 	updatedAt: Date;
 }
 
-export type TrackType = "video" | "text" | "audio" | "graphic" | "effect";
+export type TrackType = "video" | "text" | "audio" | "graphic" | "effect" | "caption";
 
 interface BaseTrack {
 	id: string;
@@ -45,6 +45,51 @@ export interface TextTrack extends BaseTrack {
 	type: "text";
 	elements: TextElement[];
 	hidden: boolean;
+}
+
+/**
+ * OneOS (files/989, Mona 2026-11-10: "Caption track in the .otio"): a caption track, as Film keeps one (`metadata.filmcraft.caption_track` in
+ * the .otio): its captions are text elements drawn in the track's ONE style (`oneos/captions.ts` derives each caption's look from it), each
+ * caption's text is its content. Its data is Film's, in Film's names, so both tools edit the same values.
+ */
+export interface CaptionTrack extends BaseTrack {
+	type: "caption";
+	elements: TextElement[];
+	hidden: boolean;
+	caption: CaptionTrackData;
+}
+
+/** Film's caption track data (filmcraft `project/src/caption.rs` `CaptionTrack`, less its captions and switches Cut holds itself). */
+export interface CaptionTrackData {
+	format: string;
+	language: string;
+	style: CaptionStyle;
+	locked: boolean;
+	sync_lock: boolean;
+	vtt_blocks: string[];
+}
+
+/** Film's caption style (filmcraft `CaptionStyle`): sizes in pixels of a 1080-line frame, colours sRGB + alpha. */
+export interface CaptionStyle {
+	font: string;
+	size: number;
+	color: [number, number, number, number];
+	background: boolean;
+	background_color: [number, number, number, number];
+	align: "Left" | "Center" | "Right";
+	anchor: "Top" | "Middle" | "Bottom";
+	margin: number;
+	line_spacing: number;
+	outline: number;
+	outline_color: [number, number, number, number];
+	font_style: string;
+}
+
+/** A caption's own data beside its text (Film's `Caption`): the speaker, the WebVTT cue id and cue settings. */
+export interface CaptionCue {
+	speaker: string | null;
+	cue_id: string | null;
+	settings: string;
 }
 
 export interface AudioTrack extends BaseTrack {
@@ -70,9 +115,10 @@ export type TimelineTrack =
 	| TextTrack
 	| AudioTrack
 	| GraphicTrack
-	| EffectTrack;
+	| EffectTrack
+	| CaptionTrack;
 
-export type OverlayTrack = VideoTrack | TextTrack | GraphicTrack | EffectTrack;
+export type OverlayTrack = VideoTrack | TextTrack | GraphicTrack | EffectTrack | CaptionTrack;
 
 export interface SceneTracks {
 	overlay: OverlayTrack[];
@@ -172,6 +218,8 @@ export interface TextElement extends BaseTimelineElement {
 	opacity: number;
 	blendMode?: BlendMode;
 	effects?: Effect[];
+	/** On a caption track: the caption's speaker, cue id and settings (files/989, "Caption track in the .otio"). */
+	caption?: CaptionCue;
 }
 
 export interface StickerElement extends BaseTimelineElement {

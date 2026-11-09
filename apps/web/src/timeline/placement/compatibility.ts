@@ -25,6 +25,8 @@ export function canElementGoOnTrack({
 	elementType: ElementType;
 	trackType: TrackType;
 }): boolean {
+	// OneOS (files/989, "Caption track in the .otio"): a caption is a text element, on a caption track.
+	if (trackType === "caption") return elementType === "text";
 	return getTrackTypeForElementType({ elementType }) === trackType;
 }
 

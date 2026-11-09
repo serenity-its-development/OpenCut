@@ -20,10 +20,12 @@
  * only once it is a OneOS file), and an element whose medium is not in the project's media list.
  */
 
+import { CaptionRefusal, isCaptionTrack, readCaptionTrack, writeCaptionTrack } from "./captions.ts";
+
 export const TICKS = 120_000;
 
 export class CutOtioRefusal extends Error {
-	readonly code: "media-not-referenced" | "format-not-round-trip" | "file-unreadable" | "library-sound-off";
+	readonly code: "media-not-referenced" | "format-not-round-trip" | "file-unreadable" | "library-sound-off" | "caption-look-not-in-film" | "caption-overlap";
 	constructor(code: CutOtioRefusal["code"], reason: string) {
 		super(`${code}: ${reason}`);
 		this.code = code;
@@ -53,8 +55,12 @@ const ticksOf = (t: J, what: string) => {
 	return t.value as number;
 };
 
+/** The canvas a Cut project draws on (its settings), else Cut's default. */
+const canvasOf = (p: J) => (p?.settings?.canvasSize && typeof p.settings.canvasSize.width === "number" ? p.settings.canvasSize : { width: 1920, height: 1080 });
+
 export function cutToOtio(cut: CutProject): J {
 	const mediaById = new Map(cut.media.map((m) => [m.id, m]));
+	const canvas = canvasOf(cut.project);
 	for (const m of cut.media) if (!/^[0-9a-z]{26}$/.test(m.file?.id ?? "") || !m.file?.version) throw new CutOtioRefusal("media-not-referenced", `the medium ${m.name} is not a OneOS file and version`);
 	const p = cut.project;
 	return {
@@ -71,7 +77,7 @@ export function cutToOtio(cut: CutProject): J {
 				tracks: {
 					OTIO_SCHEMA: "Stack.1", name: "tracks", source_range: null, effects: [], enabled: true, metadata: {},
 					markers: (scene.bookmarks as J[]).map((b) => ({ OTIO_SCHEMA: "Marker.2", name: b.note ?? "", marked_range: tr(b.time, b.duration ?? 0), color: "RED", comment: "", metadata: { opencut: { bookmark: omit(b, ["time"]) } } })),
-					children: tracks.map(([t, slot]) => track(t, slot, mediaById)),
+					children: tracks.map(([t, slot]) => (t.type === "caption" ? captionTrack(t, slot, canvas) : track(t, slot, mediaById))),
 				},
 			};
 		}),
@@ -109,6 +115,22 @@ function track(t: J, slot: string, media: Map<string, CutMedia>): J {
 	};
 }
 
+/**
+ * A caption track (files/989, Mona 2026-11-10: "Caption track in the .otio") in Film's shape, as both tools write it; Cut's own beside it: the
+ * track's id and type, its slot and order, each caption's id (and its name, when it is not its text).
+ */
+function captionTrack(t: J, slot: string, canvas: { width: number; height: number }): J {
+	try {
+		return writeCaptionTrack(t, null, TICKS, canvas, new Map(), {
+			track: { track: { id: t.id, type: t.type }, slot, order: t.elements.map((e: J) => e.id) },
+			element: (e) => ({ id: e.id, ...(e.name !== e.content ? { name: e.name } : {}) }),
+		});
+	} catch (e) {
+		if (e instanceof CaptionRefusal) throw new CutOtioRefusal(e.code, e.message.replace(/^[a-z-]+: /, ""));
+		throw e;
+	}
+}
+
 function clip(e: J, media: Map<string, CutMedia>): J {
 	let ref: J;
 	if (MEDIA_TYPES.has(e.type)) {
@@ -135,6 +157,16 @@ export function otioToCut(doc: J): CutProject {
 		const tracks = { main: null as J | null, overlay: [] as J[], audio: [] as J[] };
 		for (const t of tl.tracks.children as J[]) {
 			const meta = t.metadata.opencut;
+			if (isCaptionTrack(t)) {
+				const read = readCaptionTrack(t, meta.track.id, canvasOf(project), (c) => c.metadata.opencut.element.id);
+				if (typeof read === "string") throw new CutOtioRefusal("format-not-round-trip", `the caption track "${t.name}" ${read}`);
+				const byClip = (t.children as J[]).filter((c) => c.OTIO_SCHEMA === "Clip.2").map((c) => c.metadata.opencut.element);
+				read.track.elements.forEach((e: J, i: number) => { if (typeof byClip[i]?.name === "string") e.name = byClip[i].name; });
+				const byId = new Map((read.track.elements as J[]).map((e) => [e.id, e]));
+				const track = { ...read.track, elements: (meta.order as string[]).map((id) => byId.get(id)) };
+				(meta.slot === "audio" ? tracks.audio : tracks.overlay).push(track);
+				continue;
+			}
 			const elements: J[] = [];
 			const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
 			for (const l of lanes) {

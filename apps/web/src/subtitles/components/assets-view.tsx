@@ -21,7 +21,10 @@ import type {
 import { transcriptionService } from "@/services/transcription/service";
 import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
-import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
+import {
+	insertCaptionChunksAsCaptionTrack,
+	insertCaptionChunksAsTextTrack,
+} from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -180,7 +183,11 @@ export function Captions() {
 
 			dispatch({ type: "update_step", step: "Importing subtitles..." });
 
-			if (!insertCaptions({ captions: result.captions })) {
+			// OneOS (files/989, Mona 2026-11-10: "Caption track in the .otio"): an SRT makes a caption track; an ASS (styled cues) a text track.
+			const inserted = file.name.toLowerCase().endsWith(".srt")
+				? insertCaptionChunksAsCaptionTrack({ editor, captions: result.captions }) !== null
+				: insertCaptions({ captions: result.captions });
+			if (!inserted) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}

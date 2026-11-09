@@ -1,6 +1,8 @@
 import { DEFAULT_TRACK_NAMES } from "@/timeline/tracks";
+import { newCaptionTrackData } from "@/oneos/captions";
 import type {
 	AudioTrack,
+	CaptionTrack,
 	EffectTrack,
 	GraphicTrack,
 	TextTrack,
@@ -54,6 +56,15 @@ export function buildEmptyTrack({
 	type: "effect";
 	name?: string;
 }): EffectTrack;
+export function buildEmptyTrack({
+	id,
+	type,
+	name,
+}: {
+	id: string;
+	type: "caption";
+	name?: string;
+}): CaptionTrack;
 
 export function buildEmptyTrack({
 	id,
@@ -116,6 +127,16 @@ export function buildEmptyTrack({
 				type: "effect",
 				elements: [],
 				hidden: false,
+			};
+		case "caption":
+			// OneOS (files/989, "Caption track in the .otio"): a new caption track is Film's new one (Subtitle, English, Film's style).
+			return {
+				id,
+				name: trackName,
+				type: "caption",
+				elements: [],
+				hidden: false,
+				caption: newCaptionTrackData(),
 			};
 		default:
 			throw new Error(`Unsupported track type: ${type}`);

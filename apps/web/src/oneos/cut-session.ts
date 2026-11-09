@@ -24,10 +24,11 @@ import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cu
 import { carry, foreignOf, type Foreign } from "./foreign.ts";
 import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./film-look.ts";
 import { PER_CUT_TICK } from "./keys.ts";
+import { CaptionRefusal, isCaptionTrack, readCaptionTrack, writeCaptionTrack } from "./captions.ts";
 
 type J = Record<string, any>;
 
-export type CutSaveCode = "sound-not-in-film" | "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
+export type CutSaveCode = "caption-look-not-in-film" | "caption-overlap" | "sound-not-in-film" | "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
 
 export class CutSaveRefusal extends Error {
 	readonly code: CutSaveCode;
@@ -160,6 +161,17 @@ export class CutSession {
 			const tracks = { main: null as J | null, overlay: [] as J[], audio: [] as J[] };
 			const frame = filmFrame(tl.raw);
 			tl.tracks.forEach((t, ki) => {
+				// A caption track (files/989, Mona 2026-11-10: "Caption track in the .otio") is Cut's caption track, in Film's shape both ways.
+				if (isCaptionTrack(t.raw)) {
+					const trackId = `${sceneId}-k${ki}`;
+					const read = readCaptionTrack(t.raw, trackId, canvasOf(frame, raw));
+					if (typeof read === "string") { locked.push({ scene: tl.name, track: t.name, reason: read }); return; }
+					for (const [k, v] of read.clips) clips.set(k, v);
+					const first = (t.raw.children as J[]).find((c) => isObj(c?.source_range?.duration));
+					origins.set(trackId, { ki, rate: first?.source_range.duration.rate ?? TICKS, frame });
+					tracks.overlay.push(read.track);
+					return;
+				}
 				const why = t.locked ?? carriedLock(t.raw) ?? filmLock(t.raw, frame, t.kind === "Audio");
 				if (why) { locked.push({ scene: tl.name, track: t.name, reason: why }); return; }
 				const trackId = `${sceneId}-k${ki}`;
@@ -350,6 +362,13 @@ export class CutSession {
 				const origin = this.origins.get(t.id);
 				const was = base?.tracks.get(t.id);
 				const elementsSame = was !== undefined && json((t.elements as J[]).map(json)) === json(was);
+				if (t.type === "caption") {
+					const canvas = canvasOf(origin?.frame ?? null, this.raw, p);
+					const body = this.captionBody(t, origin ? (kept[origin.ki] as J) : null, origin?.rate ?? TICKS, canvas, clips);
+					if (origin) kept[origin.ki] = body;
+					else if ((t.elements as J[]).length) added.push({ id: t.id, track: body });
+					continue;
+				}
 				if (origin) {
 					const before = kept[origin.ki] as J;
 					const out = elementsSame ? before : this.trackBody(t, before, origin.rate, mediaById, clips, origin.frame);
@@ -477,6 +496,21 @@ export class CutSession {
 			OTIO_SCHEMA: "Stack.1", name: t.name, source_range: null, effects: [], markers: [], enabled: true, metadata,
 			children: lanes.map((l, i) => ({ ...plain(laneChildren(l, wasLanes[i] ?? []), { opencut: { lane: i } }), name: `${t.name} (lane ${i + 1})` })),
 		};
+	}
+
+	/** A caption track in Film's shape (files/989, "Caption track in the .otio"); each caption's clip is what the next save starts from. */
+	private captionBody(t: J, before: J | null, rate: number, canvas: { width: number; height: number }, clips: Map<string, J>): J {
+		let out: J;
+		try {
+			out = writeCaptionTrack(t, before, rate, canvas, this.clipOf);
+		} catch (e) {
+			if (e instanceof CaptionRefusal) throw new CutSaveRefusal(e.code, e.message.replace(/^[a-z-]+: /, ""));
+			throw e;
+		}
+		const els = [...(t.elements as J[])].sort((a, b) => a.startTime - b.startTime);
+		const made = (out.children as J[]).filter((c) => c.OTIO_SCHEMA === "Clip.2");
+		els.forEach((e, i) => clips.set(e.id, made[i]));
+		return out;
 	}
 
 	/** An element as the file held it when opened (or last saved), on any track. */
@@ -637,6 +671,13 @@ function fileLinks(v: unknown, out: number[] = []): number[] {
 function filmSwitch(t: J): boolean | null {
 	const m = isObj(t?.metadata?.filmcraft) ? t.metadata.filmcraft.muted : undefined;
 	return typeof m === "boolean" ? m : null;
+}
+
+/** The canvas a carried timeline draws on: Film's frame, else the settings Cut saved in the file (or holds), else Cut's default. */
+function canvasOf(frame: Frame | null, raw: J, project?: J): { width: number; height: number } {
+	if (frame) return { width: frame.w, height: frame.h };
+	const c = project?.settings?.canvasSize ?? raw?.metadata?.opencut?.settings?.canvasSize;
+	return isObj(c) && typeof c.width === "number" && typeof c.height === "number" ? { width: c.width, height: c.height } : { width: 1920, height: 1080 };
 }
 
 /** The frame of Film's sequence a timeline is (its width and height), or null when Film did not write it. */
