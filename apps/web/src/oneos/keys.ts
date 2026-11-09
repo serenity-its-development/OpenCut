@@ -85,8 +85,10 @@ export function filmToCut(keys: FilmKey[], parts: (v: J) => number[], prior: Arr
 			ka.segmentToNext = "bezier";
 			// A side Film does not ease is Cut's default handle (a straight third), left unset so it follows the keys as they move, as Film's does.
 			const k = perCut[c];
-			if (outEased) ka.rightHandle = a.out_rise ? { dt: reach(a.out_influence) * span, dv: (a.out_rise[c] ?? 0) / k } : { dt: clampInfluence(a.out_influence) * span, dv: 0 };
-			if (inEased) kb.leftHandle = b.in_rise ? { dt: -reach(b.in_influence) * span, dv: (b.in_rise[c] ?? 0) / k } : { dt: -clampInfluence(b.in_influence) * span, dv: 0 };
+			// A handle's reach is a whole number of Cut's ticks (the editor's MediaTime), so Film's fraction of the segment is read to the
+			// nearest tick (measured 2026-11-10: a reach of 14946/75000 read back as 14946.000000000002 ticks, which the editor refuses).
+			if (outEased) ka.rightHandle = a.out_rise ? { dt: Math.round(reach(a.out_influence) * span), dv: (a.out_rise[c] ?? 0) / k } : { dt: Math.round(clampInfluence(a.out_influence) * span), dv: 0 };
+			if (inEased) kb.leftHandle = b.in_rise ? { dt: -Math.round(reach(b.in_influence) * span), dv: (b.in_rise[c] ?? 0) / k } : { dt: -Math.round(clampInfluence(b.in_influence) * span), dv: 0 };
 		}
 		const last = out[c][keys.length - 1];
 		const lastWas = last ? was.find((w) => w.time === last.time) : undefined;
@@ -205,12 +207,17 @@ export function cutToFilm(channels: CutKey[][], value: (comps: number[]) => J, p
 		const inEased = p && !p.step && (IN_EASED_BY_NEXT.has(interps[i]) || IN_EASED_BY_SELF.has(interps[i - 1]));
 		const inSide = inEased && p && !p.step ? p.in : null;
 		const rise = (x: Side) => x.dv.map((d, c) => Math.round(d * perCut[c] * 1e9) / 1e9);
+		// Cut reads Film's reach to its whole tick, so a flat side that reads as Film's own key's keeps Film's number exactly.
+		const keep = (mine: number, film: number | undefined, sloped: boolean, span: number) =>
+			film !== undefined && !sloped && Math.round(clampInfluence(film) * span) === Math.round(mine * span) ? film : mine;
+		const spanOut = i < n - 1 ? first[i + 1].time - k.time : 0;
+		const spanIn = i > 0 ? k.time - first[i - 1].time : 0;
 		const key: FilmKey = {
 			time: k.time * PER_CUT_TICK,
 			value: value(channels.map((ch) => ch[i].value)),
 			interp: interps[i],
-			out_influence: outSide ? (outSide.flat ?? outSide.r) : (was?.out_influence ?? THIRD),
-			in_influence: inSide ? (inSide.flat ?? inSide.r) : (was?.in_influence ?? THIRD),
+			out_influence: outSide ? (outSide.flat !== null ? keep(outSide.flat, was?.out_influence, !!was?.out_rise, spanOut) : outSide.r) : (was?.out_influence ?? THIRD),
+			in_influence: inSide ? (inSide.flat !== null ? keep(inSide.flat, was?.in_influence, !!was?.in_rise, spanIn) : inSide.r) : (was?.in_influence ?? THIRD),
 		};
 		// A side Film eases flat holds no rise; a sloped one holds its rise per component.
 		if (outSide && outSide.flat === null) key.out_rise = rise(outSide);

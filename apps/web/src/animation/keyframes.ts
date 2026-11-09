@@ -1097,8 +1097,10 @@ function splitScalarChannelAtTime({
 			const r0 = lerpPoint({ left: q0, right: q1, progress });
 			const r1 = lerpPoint({ left: q1, right: q2, progress });
 			const splitPoint = lerpPoint({ left: r0, right: r1, progress });
+			// OneOS (files/989, measured 2026-11-10): the keys BEFORE the segment's left key, which is written once below with its new
+			// handle (filtering on the split time kept it twice, the same id at the same time).
 			leftKeys = [
-				...normalizedChannel.keys.filter((key) => key.time < splitTime),
+				...normalizedChannel.keys.filter((key) => key.time < leftKey.time),
 				{
 					...leftKey,
 					rightHandle: {
