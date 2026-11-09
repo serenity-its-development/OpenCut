@@ -32,6 +32,12 @@ export type MaskMode =
 	| "darken"
 	| "difference";
 
+/** How Film's mask tracker follows a mask (filmcraft `TrackMethod`), carried by Cut for Film. */
+export type MaskTrack =
+	| "position"
+	| "position-rotation"
+	| "position-scale-rotation";
+
 export interface BaseMaskParams {
 	feather: number;
 	inverted: boolean;
@@ -92,54 +98,90 @@ export interface CustomMaskParams extends BaseMaskParams {
 
 export interface SplitMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "split";
 	params: SplitMaskParams;
 }
 
 export interface CinematicBarsMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "cinematic-bars";
 	params: RectangleMaskParams;
 }
 
 export interface RectangleMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "rectangle";
 	params: RectangleMaskParams;
 }
 
 export interface EllipseMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "ellipse";
 	params: RectangleMaskParams;
 }
 
 export interface HeartMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "heart";
 	params: RectangleMaskParams;
 }
 
 export interface DiamondMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "diamond";
 	params: RectangleMaskParams;
 }
 
 export interface StarMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "star";
 	params: RectangleMaskParams;
 }
 
 export interface TextMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "text";
 	params: TextMaskParams;
 }
 
 export interface CustomMask {
 	id: string;
+	/** OneOS: the name Film shows the mask by (absent: its type's name). */
+	name?: string;
+	/** OneOS: how Film's tracker follows the mask (Film's own; carried by Cut). */
+	track?: MaskTrack;
 	type: "custom";
 	params: CustomMaskParams;
 }
