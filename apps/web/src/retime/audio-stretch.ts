@@ -1,7 +1,7 @@
 import { PitchShifter } from "soundtouchjs";
 import { clampRetimeRate, shouldMaintainPitch } from "@/retime/rate";
 import type { RetimeConfig } from "@/timeline";
-import { getSourceTimeAtClipTime } from "./resolve";
+import { getSourceTimeAtClipTime, isReversed } from "./resolve";
 
 const RATE_EPSILON = 1e-6;
 
@@ -56,10 +56,11 @@ function buildResampledBuffer({
 		for (let i = 0; i < outputLength; i++) {
 			const clipTime = i / targetSampleRate;
 			const sourceTime =
-				trimStart + getSourceTimeAtClipTime({ clipTime, retime });
+				trimStart + getSourceTimeAtClipTime({ clipTime, retime, duration: clipDuration });
+			// A reversed clip (files/989, 2c) reads a sample inside its span, never the one past its end.
 			outputData[i] = sampleLinear({
 				channelData: sourceData,
-				position: sourceTime * sourceBuffer.sampleRate,
+				position: sourceTime * sourceBuffer.sampleRate - (isReversed({ retime }) ? 1 : 0),
 			});
 		}
 	}
@@ -73,12 +74,14 @@ async function buildPitchPreservedBuffer({
 	clipDuration,
 	rate,
 	targetSampleRate,
+	reverse,
 }: {
 	sourceBuffer: AudioBuffer;
 	trimStart: number;
 	clipDuration: number;
 	rate: number;
 	targetSampleRate: number;
+	reverse: boolean;
 }): Promise<AudioBuffer> {
 	const nativeSampleRate = sourceBuffer.sampleRate;
 	const sourceDuration = clipDuration * rate;
@@ -112,10 +115,10 @@ async function buildPitchPreservedBuffer({
 		const src = sourceBuffer.getChannelData(
 			Math.min(ch, sourceBuffer.numberOfChannels - 1),
 		);
-		nativeBuffer.copyToChannel(
-			src.subarray(startSample, startSample + actualSamples),
-			ch,
-		);
+		// A reversed clip (files/989, 2c): its span backwards, stretched as it plays.
+		const span = src.slice(startSample, startSample + actualSamples);
+		if (reverse) span.reverse();
+		nativeBuffer.copyToChannel(span, ch);
 	}
 
 	const resampleSourceNode = resampleCtx.createBufferSource();
@@ -168,6 +171,7 @@ export async function renderRetimedBuffer({
 			clipDuration,
 			rate,
 			targetSampleRate,
+			reverse: isReversed({ retime }),
 		});
 	}
 

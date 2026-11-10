@@ -156,6 +156,40 @@ function filmMulticam(c: Json): string | null {
 	return `it holds Film's multicam clip${name}${cams.length ? ` (cameras: ${cams.join(", ")}${shows})` : ""}, which Cut carries untouched and does not edit`;
 }
 
+/** Cut's speed range (the editor's `retime/rate.ts`: `MIN_RETIME_RATE`, `MAX_RETIME_RATE`; pinned equal by `editor/retime.test.ts`). */
+export const CUT_RATE = { min: 0.01, max: 5 } as const;
+
+/** A clip's speed as OpenTimelineIO says it: its one `LinearTimeWarp.1` (a negative scalar is reverse, as Film writes it). */
+export interface TimeWarp { rate: number; reverse: boolean }
+
+const WARP_KEYS = ["OTIO_SCHEMA", "effect_name", "metadata", "name", "time_scalar"];
+
+/**
+ * files/989 (2c, speed and reverse): the clip's speed, when its effects are exactly one `LinearTimeWarp.1` as Film writes it (no name, no
+ * metadata), within Cut's range; null when it has no effects; else why Cut cannot show it (a frame hold, a speed outside Cut's, another
+ * effect), named.
+ */
+export function readTimeWarp(c: Json): TimeWarp | null | string {
+	const effects: unknown[] = Array.isArray(c.effects) ? c.effects : [];
+	if (!effects.length) return null;
+	const name = typeof c.name === "string" && c.name ? ` "${c.name}"` : "";
+	const w = effects[0];
+	if (effects.length === 1 && isObj(w) && w.OTIO_SCHEMA === "FreezeFrame.1") return `the clip${name} holds a frame, which Cut has no hold for`;
+	const plain = effects.length === 1 && isObj(w) && w.OTIO_SCHEMA === "LinearTimeWarp.1" && w.effect_name === "LinearTimeWarp" && (w.name ?? "") === ""
+		&& Object.keys(w).every((k) => WARP_KEYS.includes(k)) && (w.metadata === undefined || (isObj(w.metadata) && Object.keys(w.metadata).length === 0));
+	if (!plain) return `the clip${name} has effects Cut does not show`;
+	const s = w.time_scalar;
+	if (typeof s !== "number" || !Number.isFinite(s) || s === 0) return `the clip${name} has a speed Cut cannot read`;
+	if (Math.abs(s) < CUT_RATE.min || Math.abs(s) > CUT_RATE.max) return `the clip${name} plays at ${+(Math.abs(s) * 100).toFixed(6)}%, outside Cut's speed (${CUT_RATE.min * 100}% to ${CUT_RATE.max * 100}%)`;
+	return { rate: Math.abs(s), reverse: s < 0 };
+}
+
+/** The clip's effects for a speed (Film's own shape: one `LinearTimeWarp.1`, its scalar negative when reversed); none at 100% forwards. */
+export function timeWarpEffects(w: TimeWarp | null): Json[] {
+	if (!w || (w.rate === 1 && !w.reverse)) return [];
+	return [{ OTIO_SCHEMA: "LinearTimeWarp.1", name: "", effect_name: "LinearTimeWarp", time_scalar: w.reverse ? -w.rate : w.rate, metadata: {} }];
+}
+
 /** Why a track item is not something Cut edits (null: it is). */
 function editable(c: unknown): string | null {
 	if (!isObj(c)) return "it holds a non-object";
@@ -163,13 +197,18 @@ function editable(c: unknown): string | null {
 	const multicam = filmMulticam(c);
 	if (multicam) return multicam;
 	if (c.OTIO_SCHEMA !== "Clip.2" && c.OTIO_SCHEMA !== "Gap.1") return `it holds a ${label}, which Cut carries but does not edit`;
-	if ((Array.isArray(c.effects) && c.effects.length) || (Array.isArray(c.markers) && c.markers.length)) return `${label} has effects or markers`;
+	if (Array.isArray(c.markers) && c.markers.length) return `${label} has effects or markers`;
+	// A clip's speed and reverse (files/989, 2c) Cut edits; any other effect locks the track, named.
+	const warp = c.OTIO_SCHEMA === "Clip.2" ? readTimeWarp(c) : Array.isArray(c.effects) && c.effects.length ? `${label} has effects or markers` : null;
+	if (typeof warp === "string") return warp;
 	const r = c.source_range;
 	if (!isObj(r) || !isObj(r.start_time) || !isObj(r.duration) || typeof r.start_time.value !== "number" || typeof r.duration.value !== "number" || r.start_time.rate !== r.duration.rate) return `${label} has no plain source range`;
 	if (c.OTIO_SCHEMA === "Gap.1") return null;
 	const refs = c.media_references;
 	if (!isObj(refs) || Object.keys(refs).length !== 1 || c.active_media_reference_key !== "DEFAULT_MEDIA" || !isObj(refs.DEFAULT_MEDIA)) return `${label} has more than one media reference`;
-	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1" && OWN_GENERATOR.test(String(refs.DEFAULT_MEDIA.generator_kind)) && isObj(c.metadata?.opencut?.element)) return null;
+	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1" && OWN_GENERATOR.test(String(refs.DEFAULT_MEDIA.generator_kind)) && isObj(c.metadata?.opencut?.element)) {
+		return warp ? `${label} has a speed, which Cut's ${String(refs.DEFAULT_MEDIA.generator_kind).slice("OpenCut.".length)} has none of` : null;
+	}
 	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA !== "ExternalReference.1" || !parseMediaUrl(refs.DEFAULT_MEDIA.target_url)) return `${label}'s media is not a OneOS file`;
 	return null;
 }

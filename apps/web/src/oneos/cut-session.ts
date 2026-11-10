@@ -19,7 +19,7 @@
  * is exact, else in Cut's exact ticks (120000/s), never rounded. Refused by name at save, and nothing written: a library sound
  * (`library-sound-off`), a medium that is not a OneOS file (`media-not-referenced`), removing another editor's timeline (`scene-not-carried`).
  */
-import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMediaUrl, sameValue, type MediaRef, type OtioDocument } from "./otio.ts";
+import { OTIO_EXT, OTIO_MAX_BYTES, OtioRefusal, decodeOtio, mediaUrl, parseMediaUrl, readTimeWarp, sameValue, timeWarpEffects, type MediaRef, type OtioDocument, type TimeWarp } from "./otio.ts";
 import { CutOtioRefusal, TICKS, cutToOtio, otioToCut, type CutMedia } from "./cut-otio.ts";
 import { carry, foreignOf, type Foreign } from "./foreign.ts";
 import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./film-look.ts";
@@ -197,8 +197,17 @@ export class CutSession {
 							const ref = it.raw.media_references.DEFAULT_MEDIA;
 							const key = mediaKey(it.media);
 							if (!media.some((m) => m.id === key)) media.push({ id: key, name: typeof ref.name === "string" && ref.name ? ref.name : it.name, type: audio ? "audio" : "video", file: { id: it.media.id, version: it.media.version } });
+							// The clip's speed and reverse (files/989, 2c) are its time warp (Film's own LinearTimeWarp.1), and on Film's clip Maintain Audio
+							// Pitch is Film's own switch (metadata.filmcraft.maintain_pitch): Cut edits THOSE, never a retime of its own beside them.
+							const warp = readTimeWarp(it.raw) as TimeWarp | null;
+							if (warp || filmEffects(it.raw)) {
+								const pitch = filmEffects(it.raw) ? it.raw.metadata.filmcraft.maintain_pitch === true : look.retime?.maintainPitch === true;
+								delete look.retime;
+								if (warp || pitch) look.retime = { rate: warp?.rate ?? 1, maintainPitch: pitch, ...(warp?.reverse ? { reverse: true } : {}) };
+							}
+							const span = Math.round(dur * (look.retime?.rate ?? 1));
 							const avail = isObj(ref.available_range) ? toTicks(ref.available_range.duration?.value, ref.available_range.duration?.rate) : null;
-							const placed = avail === null ? { trimEnd: look.trimEnd ?? 0 } : { trimEnd: Math.max(0, avail - start - dur), sourceDuration: avail };
+							const placed = avail === null ? { trimEnd: look.trimEnd ?? 0 } : { trimEnd: Math.max(0, avail - start - span), sourceDuration: avail };
 							// A Film clip's gain (metadata.filmcraft.gain_db) IS Cut's volume: both are decibels, so Cut edits Film's own value.
 							const gain = filmGain(it.raw);
 							if (gain !== null) look.volume = gain;
@@ -473,11 +482,17 @@ export class CutSession {
 					const origin = this.clipOf.get(e.filmClip);
 					const base = this.baseElement(e.filmClip);
 					if (origin && base && filmEffects(origin)) {
-						prior = filmCopy(origin, e.trimStart - JSON.parse(base).trimStart);
+						// The copy's place in the clip it came from, in clip time: its medium's offset at the clip's speed, from the span's end
+						// when the clip is reversed (files/989, 2c: a reversed clip's later half starts at the span's start).
+						const b = JSON.parse(base);
+						const speed = b.retime?.rate ?? 1;
+						prior = filmCopy(origin, Math.round((b.retime?.reverse === true ? e.trimEnd - b.trimEnd : e.trimStart - b.trimStart) / speed));
 						was = base;
 					}
 				}
 				const c = prior && was === json(e) ? prior : this.clip(e, prior, rate, mediaById, was ? JSON.parse(was) : null, frame);
+				// A clip Cut adds to one of Film's tracks carries its speed and reverse as OTIO's time warp, which Film reads (files/989, 2c).
+				if (!prior && filmTrack && isObj(e.retime) && (e.retime.rate !== 1 || e.retime.reverse === true)) c.effects = timeWarpEffects({ rate: e.retime.rate, reverse: e.retime.reverse === true });
 				clips.set(e.id, c);
 				out.push(c);
 				at = e.startTime + e.duration;
@@ -584,6 +599,21 @@ export class CutSession {
 				c.metadata.filmcraft = { ...c.metadata.filmcraft, effects };
 				for (const k of FILM_OWNED(kind)) delete look[k];
 			}
+			// The clip's speed and reverse (files/989, 2c): written as its time warp, Film's own shape, when the clip held one or is Film's; an
+			// unchanged speed keeps the file's own effect.
+			const warpWas = readTimeWarp(before);
+			if (typeof warpWas !== "string" && (warpWas || filmEffects(before))) {
+				const r = e.retime;
+				const now: TimeWarp | null = r && (r.rate !== 1 || r.reverse === true) ? { rate: r.rate, reverse: r.reverse === true } : null;
+				if (!(warpWas && now && warpWas.rate === now.rate && warpWas.reverse === now.reverse) && !(!warpWas && !now)) c.effects = timeWarpEffects(now);
+				if (filmEffects(before)) {
+					const fc = { ...c.metadata.filmcraft };
+					if (r?.maintainPitch === true) fc.maintain_pitch = true;
+					else delete fc.maintain_pitch;
+					c.metadata.filmcraft = fc;
+					delete look.retime;
+				}
+			}
 			c.metadata = { ...(c.metadata ?? {}), opencut: { ...(c.metadata?.opencut ?? {}), element: look } };
 			return c;
 		}
@@ -637,7 +667,7 @@ function filmGain(c: J): number | null {
 	return typeof g === "number" && Number.isFinite(g) ? g : null;
 }
 /**
- * A copy of Film's clip `c` starting `offset` of Cut's ticks later in its medium (a split's right half; 0 for a duplicate or paste): Film's
+ * A copy of Film's clip `c` starting `offset` of Cut's ticks later in its clip time (a split's right half; 0 for a duplicate or paste): Film's
  * data kept, its keyframes (clip time) moved by the offset so each stays at its moment of the medium (Film's exact mirrors of its times are
  * kept as for a trim of Film's clip: Film reads them only while they still say the clip's time).
  */

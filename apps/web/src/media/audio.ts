@@ -17,7 +17,7 @@ import { doesElementHaveEnabledAudio } from "@/timeline/audio-separation";
 import { canElementHaveAudio, hasMediaId } from "@/timeline/element-utils";
 import { canTrackHaveAudio } from "@/timeline";
 import { mediaSupportsAudio } from "@/media/media-utils";
-import { getSourceTimeAtClipTime, renderRetimedBuffer } from "@/retime";
+import { getSourceTimeAtClipTime, isReversed, renderRetimedBuffer } from "@/retime";
 import { Input, ALL_FORMATS, BlobSource, AudioBufferSink } from "mediabunny";
 import { TICKS_PER_SECOND } from "@/wasm";
 import {
@@ -846,8 +846,9 @@ function mixAudioChannels({
 
 			const clipTime = i / sampleRate;
 			const sourceTime =
-				trimStart + getSourceTimeAtClipTime({ clipTime, retime });
-			const sourceIndex = sourceTime * buffer.sampleRate;
+				trimStart + getSourceTimeAtClipTime({ clipTime, retime, duration: elementDuration });
+			// A reversed clip (files/989, 2c) reads a sample inside its span, never the one past its end.
+			const sourceIndex = Math.max(0, sourceTime * buffer.sampleRate - (isReversed({ retime }) ? 1 : 0));
 			if (sourceIndex >= sourceData.length) break;
 
 			const lowerIndex = Math.floor(sourceIndex);

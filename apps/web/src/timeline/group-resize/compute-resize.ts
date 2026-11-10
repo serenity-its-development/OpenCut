@@ -23,7 +23,23 @@ import type {
 	ResizeSide,
 } from "./types";
 
-export function computeGroupResize({
+/**
+ * A reversed clip (files/989, 2c) shows its span backwards, so its left edge is the span's END: trimming the left edge moves `trimEnd`
+ * and the right edge `trimStart`. The resize is computed on the clip as it faces the timeline (trims swapped) and swapped back.
+ */
+function facing<T extends { trimStart: MediaTime; trimEnd: MediaTime; retime?: { reverse?: boolean } }>(m: T): T {
+	return m.retime?.reverse === true ? { ...m, trimStart: m.trimEnd, trimEnd: m.trimStart } : m;
+}
+
+export function computeGroupResize(args: ComputeGroupResizeArgs): GroupResizeResult {
+	const result = computeFacingResize({ ...args, members: args.members.map(facing) });
+	return {
+		...result,
+		updates: result.updates.map((u, i) => (args.members[i].retime?.reverse === true ? { ...u, patch: { ...u.patch, trimStart: u.patch.trimEnd, trimEnd: u.patch.trimStart } } : u)),
+	};
+}
+
+function computeFacingResize({
 	members,
 	side,
 	deltaTime,

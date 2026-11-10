@@ -58,7 +58,15 @@ test("an edit Cut makes lands on its own track only; a locked track beside it is
 test("what Cut cannot edit is locked with its reason, never refused or dropped: transitions, effects, markers, nested stacks, unknown fields, paths as media", () => {
 	const lockOf = (children: unknown[]) => decodeOtio("trip.otio", bytes(timeline(children))).timelines[0].tracks[0].locked;
 	assert.match(lockOf([{ OTIO_SCHEMA: "Transition.1", name: "Dissolve", transition_type: "SMPTE_Dissolve", in_offset: rt(5), out_offset: rt(5), metadata: {} }])!, /Transition\.1/);
-	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [{ OTIO_SCHEMA: "LinearTimeWarp.1", name: "", effect_name: "LinearTimeWarp", time_scalar: 2, metadata: {} }] })])!, /effects or markers/);
+	// A clip's speed (one plain LinearTimeWarp.1, files/989 2c) Cut edits; a frame hold, a speed outside Cut's, any other effect lock it, named.
+	const warp = (time_scalar: number, more: object = {}) => ({ OTIO_SCHEMA: "LinearTimeWarp.1", name: "", effect_name: "LinearTimeWarp", time_scalar, metadata: {}, ...more });
+	assert.equal(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(2)] })]) ?? null, null);
+	assert.equal(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(-0.5)] })]) ?? null, null);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(8)] })])!, /plays at 800%, outside Cut's speed \(1% to 500%\)/);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [{ OTIO_SCHEMA: "FreezeFrame.1", name: "", effect_name: "FreezeFrame", time_scalar: 0, metadata: { filmcraft: { hold: 0 } } }] })])!, /holds a frame, which Cut has no hold for/);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(2, { metadata: { other: 1 } })] })])!, /effects Cut does not show/);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(2), warp(2)] })])!, /effects Cut does not show/);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [{ OTIO_SCHEMA: "Effect.1", name: "", effect_name: "Blur", metadata: {} }] })])!, /effects Cut does not show/);
 	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { markers: [{ OTIO_SCHEMA: "Marker.2" }] })])!, /effects or markers/);
 	assert.match(lockOf([clip("beach", "file:///Users/me/beach.mov")])!, /not a OneOS file/);
 	const nested = timeline([]);

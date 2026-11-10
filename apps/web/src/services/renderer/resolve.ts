@@ -7,7 +7,8 @@ import {
 } from "@/effects/definitions/blur";
 import { effectsRegistry, resolveEffectPasses } from "@/effects";
 import type { Effect, EffectPass } from "@/effects/types";
-import { getSourceTimeAtClipTime } from "@/retime";
+import { getSourceTimeAtClipTime, isReversed } from "@/retime";
+import type { RetimeConfig } from "@/timeline";
 import {
 	DEFAULT_GRAPHIC_SOURCE_SIZE,
 	resolveGraphicElementParamsAtTime,
@@ -183,6 +184,15 @@ function resolveVisualState({
 	};
 }
 
+/**
+ * The source time a clip shows at `clipTime` (ticks). A reversed clip (files/989, 2c) shows its span backwards, a tick before the mirrored
+ * moment so its first frame is the span's last, never the frame past it (Film reads it the same way, a tick inside its span).
+ */
+function sourceTicksAt({ params, clipTime }: { params: { trimStart: number; duration: number; retime?: RetimeConfig }; clipTime: number }): number {
+	const at = getSourceTimeAtClipTime({ clipTime, retime: params.retime, duration: params.duration });
+	return params.trimStart + (isReversed({ retime: params.retime }) ? Math.max(0, at - 1) : at);
+}
+
 async function resolveVideoNode({
 	node,
 	context,
@@ -195,12 +205,7 @@ async function resolveVideoNode({
 		return null;
 	}
 
-	const sourceTimeTicks =
-		node.params.trimStart +
-		getSourceTimeAtClipTime({
-			clipTime,
-			retime: node.params.retime,
-		});
+	const sourceTimeTicks = sourceTicksAt({ params: node.params, clipTime });
 	const frame = await videoCache.getFrameAt({
 		mediaId: node.params.mediaId,
 		file: node.params.file,
@@ -412,12 +417,7 @@ async function resolveBackdropSource({
 	clipTime: number;
 }): Promise<BackdropSource | null> {
 	if (node.params.mediaType === "video") {
-		const sourceTimeTicks =
-			node.params.trimStart +
-			getSourceTimeAtClipTime({
-				clipTime,
-				retime: node.params.retime,
-			});
+		const sourceTimeTicks = sourceTicksAt({ params: node.params, clipTime });
 		const frame = await videoCache.getFrameAt({
 			mediaId: node.params.mediaId,
 			file: node.params.file,

@@ -49,12 +49,14 @@ function parseSpeedInput({ input }: { input: string }): number | null {
 function buildRetime({
 	rate,
 	maintainPitch,
+	reverse,
 }: {
 	rate: number;
 	maintainPitch: boolean;
+	reverse: boolean;
 }) {
-	if (rate === DEFAULT_RETIME_RATE && !maintainPitch) return undefined;
-	return buildConstantRetime({ rate, maintainPitch });
+	if (rate === DEFAULT_RETIME_RATE && !maintainPitch && !reverse) return undefined;
+	return buildConstantRetime({ rate, maintainPitch, reverse });
 }
 
 export function SpeedTab({
@@ -70,19 +72,23 @@ export function SpeedTab({
 	});
 	const isPitchPreserveAvailable = canMaintainPitch({ rate });
 	const maintainPitch = element.retime?.maintainPitch ?? false;
+	// OneOS (files/989, 2c): Film's reverse, Cut's own too.
+	const reverse = element.retime?.reverse === true;
 	const pendingRateRef = useRef(rate);
 
 	const commitRetime = ({
 		rate: nextRate,
 		maintainPitch: nextMaintainPitch,
+		reverse: nextReverse = reverse,
 	}: {
 		rate: number;
 		maintainPitch: boolean;
+		reverse?: boolean;
 	}) => {
 		editor.timeline.updateElementRetime({
 			trackId,
 			elementId: element.id,
-			retime: buildRetime({ rate: nextRate, maintainPitch: nextMaintainPitch }),
+			retime: buildRetime({ rate: nextRate, maintainPitch: nextMaintainPitch, reverse: nextReverse }),
 		});
 	};
 
@@ -97,7 +103,7 @@ export function SpeedTab({
 						trackId,
 						elementId: element.id,
 						updates: {
-							retime: buildRetime({ rate: nextRate, maintainPitch }),
+							retime: buildRetime({ rate: nextRate, maintainPitch, reverse }),
 						},
 					},
 				],
@@ -146,6 +152,15 @@ export function SpeedTab({
 							disabled={!isPitchPreserveAvailable}
 							onCheckedChange={(checked) =>
 								commitRetime({ rate, maintainPitch: !checked })
+							}
+						/>
+					</div>
+					<div className="flex items-center justify-between">
+						<span className="text-sm">Reverse</span>
+						<Switch
+							checked={reverse}
+							onCheckedChange={(checked) =>
+								commitRetime({ rate, maintainPitch, reverse: checked })
 							}
 						/>
 					</div>

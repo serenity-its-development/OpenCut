@@ -9,7 +9,7 @@ import { relinker, withLinked } from "@/timeline/linked";
 import { EditorCore } from "@/core";
 import { isRetimableElement } from "@/timeline";
 import { splitAnimationsAtTime } from "@/animation";
-import { getSourceSpanAtClipTime } from "@/retime";
+import { getSourceSpanAtClipTime, splitTrims } from "@/retime";
 import {
 	addMediaTime,
 	type MediaTime,
@@ -123,13 +123,13 @@ export class SplitElementsCommand extends Command {
 				});
 				let splitResult: TimelineElement[];
 
-				const leftTrimEnd = addMediaTime({
-					a: element.trimEnd,
-					b: rightSourceSpan,
-				});
-				const rightTrimStart = addMediaTime({
-					a: element.trimStart,
-					b: leftSourceSpan,
+				// A reversed clip (files/989, 2c) shows its span backwards: its left half shows the span's later source (`splitTrims`).
+				const { left: leftTrims, right: rightTrims } = splitTrims({
+					trimStart: element.trimStart,
+					trimEnd: element.trimEnd,
+					leftSourceSpan,
+					rightSourceSpan,
+					retime: retimeRef,
 				});
 
 				if (this.retainSide === "left") {
@@ -137,7 +137,7 @@ export class SplitElementsCommand extends Command {
 						{
 							...element,
 							duration: leftVisibleDuration,
-							trimEnd: leftTrimEnd,
+							...leftTrims,
 							name: `${element.name} (left)`,
 							animations: leftAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
@@ -155,7 +155,7 @@ export class SplitElementsCommand extends Command {
 							id: newId,
 							startTime: this.splitTime,
 							duration: rightVisibleDuration,
-							trimStart: rightTrimStart,
+							...rightTrims,
 							name: `${element.name} (right)`,
 							animations: rightAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
@@ -171,7 +171,7 @@ export class SplitElementsCommand extends Command {
 						{
 							...element,
 							duration: leftVisibleDuration,
-							trimEnd: leftTrimEnd,
+							...leftTrims,
 							name: `${element.name} (left)`,
 							animations: leftAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
@@ -181,7 +181,7 @@ export class SplitElementsCommand extends Command {
 							id: secondElementId,
 							startTime: this.splitTime,
 							duration: rightVisibleDuration,
-							trimStart: rightTrimStart,
+							...rightTrims,
 							name: `${element.name} (right)`,
 							animations: rightAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),

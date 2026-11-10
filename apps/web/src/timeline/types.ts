@@ -129,6 +129,8 @@ export interface SceneTracks {
 export interface RetimeConfig {
 	rate: number;
 	maintainPitch?: boolean;
+	/** OneOS (files/989, 2c): the clip shows its source span backwards, as Film's reverse does. */
+	reverse?: boolean;
 }
 
 interface BaseAudioElement extends BaseTimelineElement {

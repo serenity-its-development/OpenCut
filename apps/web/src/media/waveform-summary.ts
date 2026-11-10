@@ -1,6 +1,6 @@
 "use client";
 
-import { getSourceTimeAtClipTime } from "@/retime";
+import { getSourceTimeAtClipTime, isReversed } from "@/retime";
 import type { RetimeConfig } from "@/timeline";
 
 const RMS_ANALYSIS_WINDOW_SECONDS = 0.02;
@@ -119,17 +119,21 @@ export function buildWaveformSampleBuckets({
 			clipStartSec,
 			Math.min(clipDurationSec, bucketRightPx / pixelsPerSecond),
 		);
+		// A reversed clip (files/989, 2c) draws its span backwards: a bar's source runs from its right edge's moment to its left's.
+		const [fromSec, toSec] = isReversed({ retime }) ? [clipEndSec, clipStartSec] : [clipStartSec, clipEndSec];
 		const sourceBucketStartSec =
 			sourceStartSec +
 			getSourceTimeAtClipTime({
-				clipTime: clipStartSec,
+				clipTime: fromSec,
 				retime,
+				duration: clipDurationSec,
 			});
 		const sourceBucketEndSec =
 			sourceStartSec +
 			getSourceTimeAtClipTime({
-				clipTime: clipEndSec,
+				clipTime: toSec,
 				retime,
+				duration: clipDurationSec,
 			});
 
 		return {

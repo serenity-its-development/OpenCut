@@ -11,6 +11,7 @@ import { createAudioMasteringChain } from "@/media/audio-mastering";
 import {
 	getClipTimeAtSourceTime,
 	getSourceTimeAtClipTime,
+	isReversed,
 	renderRetimedBuffer,
 } from "@/retime";
 import {
@@ -461,6 +462,8 @@ export class AudioManager {
 	}): boolean {
 		return (
 			this.hasCurveRetime({ clip }) ||
+			// A reversed clip (files/989, 2c) plays its span backwards, which a forward stream of the medium cannot: it is prepared whole.
+			isReversed({ retime: clip.retime }) ||
 			hasAnimatedVolume({ element: clip.timelineElement }) ||
 			shouldMaintainPitch({
 				rate: clip.retime?.rate ?? 1,

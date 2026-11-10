@@ -93,6 +93,7 @@ export function buildSeparatedAudioElement({
 			? {
 					rate: sourceElement.retime.rate,
 					maintainPitch: sourceElement.retime.maintainPitch,
+					...(sourceElement.retime.reverse ? { reverse: true } : {}),
 				}
 			: undefined,
 		animations: cloneVolumeAnimations({
