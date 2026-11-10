@@ -363,6 +363,50 @@ export class CutSession {
 	/** In a carried save: a link label as the number Film holds (a number Cut read from Film is kept; a label Cut made is numbered above all). */
 	private linkNo: (label: unknown) => number | null = () => null;
 
+	/** Per element, the Film clip markers it is written with, where that is not the clip's own list as read (none: as read). */
+	private markerPlan = new Map<string, J[]>();
+
+	/**
+	 * Where each marker of a Film clip goes (files/989, Mona 2026-11-10: "Teach Film, then move"): a marker stays where it is in the picture,
+	 * on the element of that clip whose span of the medium holds it. The clip's own element (it keeps its id) holds it first; else the first
+	 * copy written in Film's shape (a split's right half; a duplicate or paste is the clip's whole span, so it gets only what the clip no longer
+	 * holds) whose span holds it; else it stays on the clip's own element (a trim keeps it). An element the person left unchanged keeps its
+	 * markers exactly, and its copies take none.
+	 */
+	private planMarkers(scenes: J[], roots: J[]): void {
+		this.markerPlan = new Map();
+		const groups = new Map<string, { own: J | null; copies: J[] }>();
+		const group = (id: string) => groups.get(id) ?? (groups.set(id, { own: null, copies: [] }), groups.get(id)!);
+		for (const sc of scenes) {
+			const ti = this.sceneAt.get(sc.id);
+			for (const t of allTracks(sc)) {
+				const o = this.origins.get(t.id);
+				const raw = ti !== undefined && o ? roots[ti]?.tracks?.children?.[o.ki] : null;
+				const filmTrack = isObj(raw) && !isObj(raw.metadata?.opencut?.track);
+				for (const e of t.elements as J[]) {
+					if (this.clipOf.has(e.id)) group(e.id).own = e;
+					else if (filmTrack && typeof e.filmClip === "string" && filmEffects(this.clipOf.get(e.filmClip) as J) && this.baseElement(e.filmClip)) group(e.filmClip).copies.push(e);
+				}
+			}
+		}
+		const atTicks = (t: J) => (t.value / t.rate) * TICKS;
+		const holds = (e: J, m: J) => {
+			const at = atTicks(m.marked_range.start_time);
+			return at >= e.trimStart && at < e.trimStart + e.duration * (e.retime?.rate ?? 1);
+		};
+		for (const [id, g] of groups) {
+			const markers: J[] = this.clipOf.get(id)?.markers ?? [];
+			if (!Array.isArray(markers) || !markers.length || !g.copies.length) continue;
+			if (g.own && json(g.own) === this.baseElement(id)) continue;
+			const to = new Map<J, J[]>();
+			for (const m of markers) {
+				const e = g.own && holds(g.own, m) ? g.own : g.copies.find((x) => holds(x, m)) ?? g.own;
+				if (e) to.set(e, [...(to.get(e) ?? []), m]);
+			}
+			for (const e of [g.own, ...g.copies]) if (e) this.markerPlan.set(e.id, to.get(e) ?? []);
+		}
+	}
+
 	private carriedSave(p: J, media: CutMedia[], clips: Map<string, J>, origins: Map<string, Origin>, sceneAt: Map<string, number>): J {
 		const base = this.base;
 		const numeric = (l: unknown) => typeof l === "string" && /^(0|[1-9][0-9]{0,14})$/.test(l);
@@ -387,6 +431,7 @@ export class CutSession {
 			if (!isObj(tl.metadata?.opencut?.scene)) throw new CutSaveRefusal("scene-not-carried", `the timeline "${tl.name}" was removed; it is this file's own (another editor's), so Cut keeps it`);
 			dropped.add(tl);
 		});
+		this.planMarkers(scenes, roots);
 		const fresh: J[] = [];
 		const freshScenes: J[] = [];
 		for (const sc of scenes) {
@@ -532,7 +577,10 @@ export class CutSession {
 						was = base;
 					}
 				}
-				const c = prior && was === json(e) ? prior : this.clip(e, prior, rate, mediaById, was ? JSON.parse(was) : null, frame);
+				let c = prior && was === json(e) ? prior : this.clip(e, prior, rate, mediaById, was ? JSON.parse(was) : null, frame);
+				// Film's clip markers on the half of a split that holds each (files/989, Mona 2026-11-10: "Teach Film, then move").
+				const planned = this.markerPlan.get(e.id);
+				if (planned) c = { ...c, markers: planned };
 				// A clip Cut adds to one of Film's tracks carries its speed and reverse as OTIO's time warp, which Film reads (files/989, 2c).
 				if (!prior && filmTrack && isObj(e.retime) && (e.retime.rate !== 1 || e.retime.reverse === true)) c.effects = timeWarpEffects({ rate: e.retime.rate, reverse: e.retime.reverse === true });
 				clips.set(e.id, c);
@@ -725,8 +773,7 @@ function filmGain(c: J): number | null {
  */
 function filmCopy(c: J, offset: number): J {
 	const out = clone(c);
-	// The clip's own markers stay on the clip they came from (files/989, 2c clip markers): a copy carries none, as Film makes a clip it
-	// reads anew without them, so the original keeps every one.
+	// A copy carries none of the clip's own markers unless one is moved to it (files/989, "Teach Film, then move": `planMarkers`).
 	out.markers = [];
 	const fc = out.metadata.filmcraft;
 	for (const e of Array.isArray(fc.effects) ? fc.effects : []) {
