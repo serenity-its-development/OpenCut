@@ -169,6 +169,13 @@ function filmMulticam(c: Json): string | null {
 	return `it holds Film's multicam clip${name}${cams.length ? ` (cameras: ${cams.join(", ")}${shows})` : ""}, which Cut carries untouched and does not edit`;
 }
 
+/** The name Film gives one of its generators (filmcraft `media/src/generators.rs` `Generator::label`), from the serde shape Film writes. */
+function filmGeneratorName(g: unknown): string {
+	const tag = typeof g === "string" ? g : isObj(g) ? Object.keys(g)[0] ?? "" : "";
+	const names: Record<string, string> = { BarsAndTone: "Bars and Tone", ColorMatte: "Color Matte", BlackVideo: "Black Video", TransparentVideo: "Transparent Video", CountingLeader: "Universal Counting Leader", Demo: "demo scene", Tone: "Tone" };
+	return names[tag] ?? (tag || "unnamed");
+}
+
 /** Cut's speed range (the editor's `retime/rate.ts`: `MIN_RETIME_RATE`, `MAX_RETIME_RATE`; pinned equal by `editor/retime.test.ts`). */
 export const CUT_RATE = { min: 0.01, max: 5 } as const;
 
@@ -209,6 +216,8 @@ function editable(c: unknown): string | null {
 	const label = `${String(c.OTIO_SCHEMA)} ${typeof c.name === "string" && c.name ? `"${c.name}"` : ""}`.trim();
 	const multicam = filmMulticam(c);
 	if (multicam) return multicam;
+	// Film's nested sequence (files/989, 2c nested sequences, under the rule of thumb): Cut has no nesting, so it is named, carried, locked.
+	if (c.OTIO_SCHEMA === "Stack.1" && isObj(c.metadata?.filmcraft) && isObj(c.metadata.filmcraft.clip)) return `it holds Film's nested sequence${typeof c.name === "string" && c.name ? ` "${c.name}"` : ""}, which Cut carries untouched and does not edit (Cut has no nested sequences)`;
 	if (c.OTIO_SCHEMA !== "Clip.2" && c.OTIO_SCHEMA !== "Gap.1") return `it holds a ${label}, which Cut carries but does not edit`;
 	// A clip's own markers (files/989, 2c clip markers; the rule of thumb) Cut carries untouched on the clip, which stays editable; Cut has no
 	// clip-marker type of its own. A gap's markers, or anything in a clip's markers that is not a marker, still locks the track.
@@ -227,6 +236,9 @@ function editable(c: unknown): string | null {
 	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1" && OWN_GENERATOR.test(String(refs.DEFAULT_MEDIA.generator_kind)) && isObj(c.metadata?.opencut?.element)) {
 		return warp ? `${label} has a speed, which Cut's ${String(refs.DEFAULT_MEDIA.generator_kind).slice("OpenCut.".length)} has none of` : null;
 	}
+	// Film's generators (files/989, 2c generators, under the rule of thumb): Cut draws none of them, so each is named, carried, locked.
+	const g = refs.DEFAULT_MEDIA.OTIO_SCHEMA === "GeneratorReference.1" && isObj(refs.DEFAULT_MEDIA.metadata?.filmcraft) ? refs.DEFAULT_MEDIA.metadata.filmcraft.generator : undefined;
+	if (g !== undefined) return `${label} is Film's ${filmGeneratorName(g)} generator, which Cut carries untouched and does not draw or edit`;
 	if (refs.DEFAULT_MEDIA.OTIO_SCHEMA !== "ExternalReference.1" || !parseMediaUrl(refs.DEFAULT_MEDIA.target_url)) return `${label}'s media is not a OneOS file`;
 	return null;
 }
