@@ -106,3 +106,43 @@ test("the picker offers the shared set and Shapes; flags are no longer offered; 
 	assert.ok(set.credits.some((c) => /Solar icon set by 480 Design/.test(c.credit)));
 	assert.ok(set.stickers.every(([id]) => /^(noto|solar|fluent-color)\//.test(id)));
 });
+
+test("Cut's build fails by name when the set's copy in its bundle is missing or is not the pinned set, never with an empty picker", async () => {
+	const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { createHash } = await import("node:crypto");
+	const { stickerFaults } = await import("../../scripts/oneos-stickers.mjs");
+	const web = mkdtempSync(join(tmpdir(), "cut-stickers-"));
+	try {
+		const files: [string, string][] = [["CREDITS.txt", "credits\n"], ["noto/1f600.svg", "<svg/>"]];
+		const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+		const pin = { digest: "d".repeat(64), files: 2, filesDigest: sha(files.map(([f, b]) => `${f} ${sha(b)}\n`).join("")) };
+		assert.match(stickerFaults(web, pin).join(), /^oneos-stickers-missing:/);
+		mkdirSync(join(web, "public", "stickers", "oneos", "noto"), { recursive: true });
+		assert.match(stickerFaults(web, pin).join(), /^oneos-stickers-missing: .* is empty/);
+		for (const [f, b] of files) writeFileSync(join(web, "public", "stickers", "oneos", f), b);
+		assert.deepEqual(stickerFaults(web, pin), []);
+		writeFileSync(join(web, "public", "stickers", "oneos", "noto", "1f600.svg"), "<svg>changed</svg>");
+		assert.match(stickerFaults(web, pin).join(), /^oneos-stickers-not-pinned:/);
+	} finally {
+		rmSync(web, { recursive: true, force: true });
+	}
+	const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "package.json"), "utf8"));
+	assert.match(pkg.scripts.build, /^node scripts\/oneos-stickers\.mjs && next build$/, "the build checks the set first");
+	const set = await oneosStickerSet();
+	assert.equal(typeof set.set.filesDigest, "string");
+	assert.equal(set.set.files, set.stickers.length + 4, "every sticker, three licence texts and CREDITS.txt");
+});
+
+test("the set's credits ship visibly with Cut: the sticker panel shows each source's credit and links its licence text in the bundle", async () => {
+	const set = await oneosStickerSet();
+	const by = (n: RegExp) => set.credits.find((c) => n.test(c.name));
+	assert.equal(by(/^Noto Emoji/)?.licenceFile, "licences/noto-emoji-Apache-2.0.txt");
+	assert.equal(by(/^Solar/)?.licenceFile, "licences/solar-CC-BY-4.0.txt");
+	assert.equal(by(/^Fluent/)?.licenceFile, "licences/fluent-color-MIT.txt");
+	assert.match(by(/^Solar/)!.credit, /by 480 Design .*CC BY 4\.0/);
+	const view = readFileSync(join(import.meta.dirname, "..", "..", "src", "stickers", "components", "assets-view.tsx"), "utf8");
+	assert.match(view, /<StickerCredits \/>/, "the panel renders the credits");
+	assert.match(view, /\{c\.credit\}/);
+	assert.match(view, /href=\{`\$\{ONEOS_STICKER_BASE\}\/\$\{c\.licenceFile\}`\}/);
+});

@@ -5,23 +5,28 @@ export const ONEOS_STICKER_SET: OneosStickerSet = {
  "set": {
   "version": 1,
   "digest": "211bb2ab643d987b82fd1f3d780791fcdb8a51d5fa36372728575bae68a81ba6",
-  "size": 128
+  "size": 128,
+  "files": 5461,
+  "filesDigest": "804f481877cf8e464a9dab65bd509527a487dff67a604e318290cce979210161"
  },
  "credits": [
   {
    "name": "Noto Emoji",
    "licence": "Apache-2.0",
-   "credit": "Noto Emoji by Google (https://github.com/googlefonts/noto-emoji), licensed under the Apache License, Version 2.0"
+   "credit": "Noto Emoji by Google (https://github.com/googlefonts/noto-emoji), licensed under the Apache License, Version 2.0",
+   "licenceFile": "licences/noto-emoji-Apache-2.0.txt"
   },
   {
    "name": "Solar icon set (Bold Duotone)",
    "licence": "CC-BY-4.0",
-   "credit": "Solar icon set by 480 Design (https://www.figma.com/community/file/1166831539721848736), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); changed: each icon is made a standalone 128-unit SVG"
+   "credit": "Solar icon set by 480 Design (https://www.figma.com/community/file/1166831539721848736), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); changed: each icon is made a standalone 128-unit SVG",
+   "licenceFile": "licences/solar-CC-BY-4.0.txt"
   },
   {
    "name": "Fluent UI System Color Icons",
    "licence": "MIT",
-   "credit": "Fluent UI System Color Icons by Microsoft Corporation (https://github.com/microsoft/fluentui-system-icons), MIT License"
+   "credit": "Fluent UI System Color Icons by Microsoft Corporation (https://github.com/microsoft/fluentui-system-icons), MIT License",
+   "licenceFile": "licences/fluent-color-MIT.txt"
   },
   {
    "name": "Unicode emoji-test.txt 18.0 (the emoji names)",

@@ -27,8 +27,8 @@ const SEARCH_LIMIT = 100;
 /** `[id, name, keywords]` per sticker, as the set lists them. */
 export type OneosStickerEntry = [string, string, string[]];
 export interface OneosStickerSet {
-	set: { version: number; digest: string; size: number };
-	credits: { name: string; licence: string; credit: string }[];
+	set: { version: number; digest: string; size: number; files: number; filesDigest: string };
+	credits: { name: string; licence: string; credit: string; licenceFile?: string }[];
 	stickers: OneosStickerEntry[];
 }
 

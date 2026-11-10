@@ -17,6 +17,7 @@ import {
 } from "@/timeline/element-utils";
 import { STICKER_CATEGORIES } from "@/stickers/categories";
 import { parseShapeStickerId } from "@/stickers/providers/shapes";
+import { ONEOS_STICKER_BASE, oneosStickerSet, type OneosStickerSet } from "@/stickers/providers/oneos";
 import type { TimelineDragData } from "@/timeline/drag";
 import type {
 	StickerBrowseSection,
@@ -89,7 +90,47 @@ export function StickersView() {
 					<StickersContentView />
 				</div>
 			</Tabs>
+			<StickerCredits />
 		</div>
+	);
+}
+
+/**
+ * OneOS (files/989): the credit every source of the shared sticker set is owed, shown with the set in the panel itself (the attribution
+ * CC BY 4.0 asks for Solar's icons, the Apache-2.0 notice of Noto Emoji's images, Fluent's MIT notice), each with its licence text, which
+ * Cut's bundle carries beside the stickers.
+ */
+function StickerCredits() {
+	const [credits, setCredits] = useState<OneosStickerSet["credits"]>([]);
+	useEffect(() => {
+		let live = true;
+		void oneosStickerSet().then((set) => live && setCredits(set.credits));
+		return () => {
+			live = false;
+		};
+	}, []);
+	if (!credits.length) return null;
+	return (
+		<details className="text-muted-foreground border-t px-4 py-2 text-xs" aria-label="Sticker credits">
+			<summary className="cursor-pointer">
+				Stickers: {credits.filter((c) => c.licenceFile).map((c) => `${c.name} (${c.licence})`).join(", ")}
+			</summary>
+			<ul className="mt-2 flex flex-col gap-1.5">
+				{credits.map((c) => (
+					<li key={c.name}>
+						{c.credit}.
+						{c.licenceFile && (
+							<>
+								{" "}
+								<a className="underline" href={`${ONEOS_STICKER_BASE}/${c.licenceFile}`} target="_blank" rel="noreferrer">
+									Licence text
+								</a>
+							</>
+						)}
+					</li>
+				))}
+			</ul>
+		</details>
 	);
 }
 
