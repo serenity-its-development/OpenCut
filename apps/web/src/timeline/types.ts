@@ -1,3 +1,4 @@
+import type { TrackTransition } from "./transitions";
 import type { ElementAnimations } from "@/animation/types";
 import type { Effect } from "@/effects/types";
 import type { Mask } from "@/masks/types";
@@ -39,6 +40,8 @@ export interface VideoTrack extends BaseTrack {
 	elements: (VideoElement | ImageElement)[];
 	muted: boolean;
 	hidden: boolean;
+	/** OneOS (files/989, "Simple ones only"): the picture transitions at its cuts (`timeline/transitions.ts`). */
+	transitions?: TrackTransition[];
 }
 
 export interface TextTrack extends BaseTrack {
@@ -96,6 +99,8 @@ export interface AudioTrack extends BaseTrack {
 	type: "audio";
 	elements: AudioElement[];
 	muted: boolean;
+	/** OneOS (files/989, "Simple ones only"): the audio crossfades at its cuts (`timeline/transitions.ts`). */
+	transitions?: TrackTransition[];
 }
 
 export interface GraphicTrack extends BaseTrack {

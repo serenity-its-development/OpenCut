@@ -5,6 +5,7 @@ import { TimelineElement } from "./timeline-element";
 import type { TimelineTrack } from "@/timeline";
 import type { TimelineElement as TimelineElementType } from "@/timeline";
 import { TIMELINE_LAYERS } from "./layers";
+import { TimelineTransitions } from "./timeline-transitions";
 import type { ElementDragView } from "@/timeline";
 
 interface TimelineTrackContentProps {
@@ -108,6 +109,8 @@ export function TimelineTrackContent({
 						);
 					})
 				)}
+				{/* OneOS (files/989, "Simple ones only"): the track's transitions at their cuts. */}
+				<TimelineTransitions track={track} zoomLevel={zoomLevel} />
 			</div>
 		</div>
 	);

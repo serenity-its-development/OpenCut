@@ -1,3 +1,4 @@
+import { settleTransitions } from "@/timeline/transitions";
 import type { EditorCore } from "@/core";
 import type { ElementBounds } from "@/preview/element-bounds";
 import type { ParamValues } from "@/params";
@@ -928,7 +929,8 @@ export class TimelineManager {
 	updateTracks(newTracks: SceneTracks): void {
 		this.previewOverlay.clear();
 		this.previewTracks = null;
-		this.editor.scenes.updateSceneTracks({ tracks: newTracks });
+		// OneOS (files/989, "Simple ones only"): a transition an edit left without its place goes with it, as Film's does.
+		this.editor.scenes.updateSceneTracks({ tracks: settleTransitions(newTracks) });
 		this.notify();
 	}
 }

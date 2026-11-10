@@ -5,6 +5,8 @@ import { useEditor } from "@/editor/use-editor";
 import { useAssetsPanelStore } from "@/components/editor/panels/assets/assets-panel-store";
 import { AudioWaveform, WAVEFORM_GAIN_SAMPLE_COUNT } from "./audio-waveform";
 import { AudioVolumeLine } from "./audio-volume-line";
+import { addTransitionAt, useTransitionCommand } from "./timeline-transitions";
+import { holdsTransitions } from "@/timeline/transitions";
 import { useElementPreview } from "@/timeline/hooks/use-element-preview";
 import {
 	useKeyframeDrag,
@@ -73,6 +75,8 @@ import {
 	Exchange01Icon,
 	KeyframeIcon,
 	MagicWand05Icon,
+	TransitionLeftIcon,
+	TransitionRightIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { uppercase } from "@/utils/string";
@@ -231,6 +235,7 @@ export function TimelineElement({
 }: TimelineElementProps) {
 	const mediaAssets = useEditor((e) => e.media.getAssets());
 	const { selectedElements } = useElementSelection();
+	const runTransition = useTransitionCommand();
 	const requestRevealMedia = useAssetsPanelStore((s) => s.requestRevealMedia);
 	const { renderElement } = useElementPreview({
 		trackId: track.id,
@@ -460,6 +465,28 @@ export function TimelineElement({
 						>
 							{sourceAudioLabel}
 						</ContextMenuItem>
+					)}
+					{holdsTransitions(track) && selectedElements.length <= 1 && (
+						<>
+							<ContextMenuItem
+								icon={<HugeiconsIcon icon={TransitionLeftIcon} />}
+								onClick={(event: React.MouseEvent) => {
+									event.stopPropagation();
+									addTransitionAt(runTransition, track, element.id, "start");
+								}}
+							>
+								Transition at start
+							</ContextMenuItem>
+							<ContextMenuItem
+								icon={<HugeiconsIcon icon={TransitionRightIcon} />}
+								onClick={(event: React.MouseEvent) => {
+									event.stopPropagation();
+									addTransitionAt(runTransition, track, element.id, "end");
+								}}
+							>
+								Transition at end
+							</ContextMenuItem>
+						</>
 					)}
 					{canElementBeHidden(element) && (
 						<VisibilityMenuItem

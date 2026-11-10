@@ -21,11 +21,12 @@
  */
 
 import { CaptionRefusal, isCaptionTrack, readCaptionTrack, writeCaptionTrack } from "./captions.ts";
+import { transitionChild, transitionsAmong } from "./transitions.ts";
 
 export const TICKS = 120_000;
 
 export class CutOtioRefusal extends Error {
-	readonly code: "media-not-referenced" | "format-not-round-trip" | "file-unreadable" | "library-sound-off" | "caption-look-not-in-film" | "caption-overlap";
+	readonly code: "transition-not-carried" | "media-not-referenced" | "format-not-round-trip" | "file-unreadable" | "library-sound-off" | "caption-look-not-in-film" | "caption-overlap";
 	constructor(code: CutOtioRefusal["code"], reason: string) {
 		super(`${code}: ${reason}`);
 		this.code = code;
@@ -84,13 +85,22 @@ export function cutToOtio(cut: CutProject): J {
 	};
 }
 
-function lane(els: J[], media: Map<string, CutMedia>): J[] {
+function lane(els: J[], media: Map<string, CutMedia>, transitions: J[] = []): J[] {
 	const children: J[] = [];
+	const placedAt = new Map<string, number>();
 	let at = 0;
 	for (const e of els) {
 		if (e.startTime > at) children.push({ OTIO_SCHEMA: "Gap.1", name: "", source_range: tr(0, e.startTime - at), effects: [], markers: [], enabled: true, metadata: {} });
+		placedAt.set(e.id, children.length);
 		children.push(clip(e, media));
 		at = e.startTime + e.duration;
+	}
+	// files/989 ("Simple ones only"): the track's transitions in Film's own shape, after the clip ending at the cut, else before the one
+	// starting there.
+	const inserts = transitions.map((x) => ({ i: x.fromId !== null ? (placedAt.get(x.fromId) as number) + 1 : (placedAt.get(x.toId) as number), x }));
+	for (const { i, x } of inserts.sort((a, b) => b.i - a.i)) {
+		if (!Number.isInteger(i)) throw new CutOtioRefusal("transition-not-carried", `a transition names an element its track does not hold`);
+		children.splice(i, 0, transitionChild(x as never, TICKS, null));
 	}
 	return children;
 }
@@ -105,10 +115,12 @@ function track(t: J, slot: string, media: Map<string, CutMedia>): J {
 		else lanes.push([e]);
 	}
 	const kind = slot === "audio" ? "Audio" : "Video";
-	const meta = { opencut: { track: omit(t, ["name", "elements"]), slot, order: t.elements.map((e: J) => e.id) } };
+	const meta = { opencut: { track: omit(t, ["name", "elements", "transitions"]), slot, order: t.elements.map((e: J) => e.id) } };
+	const transitions: J[] = Array.isArray(t.transitions) ? t.transitions : [];
 	if (lanes.length <= 1) {
-		return { OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: meta, children: lane(lanes[0] ?? [], media) };
+		return { OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: meta, children: lane(lanes[0] ?? [], media, transitions) };
 	}
+	if (transitions.length) throw new CutOtioRefusal("transition-not-carried", `the track "${t.name}" holds a transition and elements that overlap, which an OpenTimelineIO track (a sequence) cannot hold together`);
 	return {
 		OTIO_SCHEMA: "Stack.1", name: t.name, source_range: null, effects: [], markers: [], enabled: true, metadata: meta,
 		children: lanes.map((l, i) => ({ OTIO_SCHEMA: "Track.1", name: `${t.name} (lane ${i + 1})`, kind, source_range: null, effects: [], markers: [], enabled: true, metadata: { opencut: { lane: i } }, children: lane(l, media) })),
@@ -169,9 +181,17 @@ export function otioToCut(doc: J): CutProject {
 			}
 			const elements: J[] = [];
 			const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
+			// files/989 ("Simple ones only"): the track's transitions, read from Film's shape among its children.
+			let transitions: J[] = [];
+			if (lanes.length === 1) {
+				const read = transitionsAmong(t.children as J[], t.kind === "Audio", (c) => c.metadata?.opencut?.element?.id, (n) => `${meta.track.id}-x${n}`);
+				if (typeof read === "string") throw new CutOtioRefusal("format-not-round-trip", `the track "${t.name}": ${read}`);
+				transitions = read.map((r) => r.x);
+			}
 			for (const l of lanes) {
 				let at = 0;
 				for (const c of l.children as J[]) {
+					if (c.OTIO_SCHEMA === "Transition.1") continue;
 					if (c.OTIO_SCHEMA === "Gap.1") { at += ticksOf(c.source_range.duration, "a gap"); continue; }
 					const duration = ticksOf(c.source_range.duration, c.name);
 					elements.push({ ...c.metadata.opencut.element, name: c.name, startTime: at, duration, trimStart: ticksOf(c.source_range.start_time, c.name) });
@@ -180,7 +200,7 @@ export function otioToCut(doc: J): CutProject {
 			}
 			const byId = new Map(elements.map((e) => [e.id, e]));
 			const ordered = (meta.order as string[]).map((id) => byId.get(id));
-			const track = { ...meta.track, name: t.name, elements: ordered };
+			const track = { ...meta.track, name: t.name, elements: ordered, ...(transitions.length ? { transitions } : {}) };
 			if (meta.slot === "main") tracks.main = track;
 			else (meta.slot === "overlay" ? tracks.overlay : tracks.audio).push(track);
 		}

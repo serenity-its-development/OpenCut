@@ -16,6 +16,11 @@ export interface VisualNodeParams {
 	blendMode?: BlendMode;
 	effects?: Effect[];
 	masks?: Mask[];
+	/**
+	 * OneOS (files/989, "Simple ones only"): its part in its track's transitions (`timeline/transitions.ts`): it is drawn `head` ticks before
+	 * its start and `tail` after its end (its handles), at its weight then (its opacity times it); null where it is not drawn.
+	 */
+	share?: { head: number; tail: number; at: (time: number) => number | null };
 }
 
 export interface ResolvedVisualNodeState {

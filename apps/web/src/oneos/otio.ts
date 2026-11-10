@@ -7,12 +7,15 @@
  * that is a OneOS file (`oneos:file/<id>?version=<v>`), or Cut's OWN generator (`GeneratorReference.1` of kind `OpenCut.<text|sticker|graphic|
  * effect>` whose clip carries `metadata.opencut.element`); no effects, no markers. Cut's own stacked lanes (a `Stack.1` with
  * `metadata.opencut.track` of `Track.1` lanes each marked `metadata.opencut.lane`) are one editable track. Anything else on a track - a
- * transition, an effect, a marker, another tool's stack or generator, media that is not a OneOS file - LOCKS that track (shown, not editable,
+ * transition other than Film's simple ones (files/989, "Simple ones only"), an effect, a marker, another tool's stack or generator, media that is not a OneOS file - LOCKS that track (shown, not editable,
  * written back exactly), with the reason named.
  * Everything outside the tracks (Film's metadata.filmcraft.project, other tools' metadata, the stack's own markers) is never touched.
  * Refused by name only what Cut would damage: bytes that are not OpenTimelineIO, and a document its own write-back would change.
  * Pure: no DOM, no storage, no network.
  */
+
+import { readTransition } from "./transitions.ts";
+import type { TransitionKind } from "../timeline/transitions.ts";
 
 export const OTIO_EXT = "otio";
 /** The type OneOS stores an .otio under (OpenTimelineIO registers none). */
@@ -36,7 +39,9 @@ export interface Span { start: number; duration: number; rate: number }
 export type Item =
 	| { type: "clip"; name: string; enabled: boolean; source: Span; media: MediaRef; metadata: Json; raw: Json }
 	| { type: "generator"; name: string; enabled: boolean; source: Span; kind: string; metadata: Json; raw: Json }
-	| { type: "gap"; name: string; enabled: boolean; source: Span; metadata: Json; raw: Json };
+	| { type: "gap"; name: string; enabled: boolean; source: Span; metadata: Json; raw: Json }
+	/** files/989 ("Simple ones only"): one of Film's simple transitions, between the items either side of it (`oneos/transitions.ts`). */
+	| { type: "transition"; name: string; kind: TransitionKind; before: number; after: number; raw: Json };
 export interface Track {
 	kind: string;
 	name: string;
@@ -109,6 +114,13 @@ function sequence(t: Json): Item[] | string {
 	if ((Array.isArray(t.effects) && t.effects.length) || (Array.isArray(t.markers) && t.markers.length)) return "it has effects or markers of its own";
 	const items: Item[] = [];
 	for (const c of Array.isArray(t.children) ? t.children : []) {
+		// Film's simple transitions Cut edits (files/989, Mona 2026-11-10: "Simple ones only"); any other locks the track, named.
+		if (isObj(c) && c.OTIO_SCHEMA === "Transition.1") {
+			const read = readTransition(c, t.kind === "Audio");
+			if (typeof read === "string") return read;
+			items.push({ type: "transition", name: typeof c.name === "string" ? c.name : "", ...read, raw: c });
+			continue;
+		}
 		const why = editable(c);
 		if (why) return why;
 		const source = { start: c.source_range.start_time.value, duration: c.source_range.duration.value, rate: c.source_range.duration.rate };
@@ -133,6 +145,7 @@ function laneStack(t: Json, name: string, lockedTrack: (why: string) => Track): 
 		kind = l.kind;
 		const seq = sequence(l);
 		if (typeof seq === "string") return lockedTrack(`lane ${li + 1}: ${seq}`);
+		if (seq.some((it) => it.type === "transition")) return lockedTrack(`lane ${li + 1} holds a transition, which Cut's stacked lanes do not`);
 		lanes.push(seq);
 	}
 	return { kind, name, locked: null, items: [], lanes, raw: t };
@@ -232,6 +245,7 @@ export function encodeOtio(doc: OtioDocument): Uint8Array {
 
 function writeItem(it: Item): Json {
 	const r = clone(it.raw);
+	if (it.type === "transition") return r;
 	r.name = it.name;
 	r.enabled = it.enabled;
 	r.metadata = clone(it.metadata);

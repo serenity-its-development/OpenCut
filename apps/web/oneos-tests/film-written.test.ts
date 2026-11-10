@@ -24,11 +24,19 @@ function load(s: CutSession) {
 	return p;
 }
 
-test("Cut opens the file Film wrote: its media are OneOS files, the transition track is carried locked, and unedited it saves the very bytes", () => {
+test("Cut opens the file Film wrote: its media are OneOS files, Film's cross dissolve is Cut's (files/989, \"Simple ones only\"), and unedited it saves the very bytes", () => {
 	const s = CutSession.open("Trip.otio", film);
 	assert.equal(s.mode, "carried");
 	assert.deepEqual(s.project.scenes.map((sc: { name: string }) => sc.name), ["Edit", "Alt"]);
-	assert.ok(s.locked.some((l) => l.scene === "Edit" && /Transition\.1/.test(l.reason)), JSON.stringify(s.locked));
+	assert.ok(!s.locked.some((l) => /Transition\.1/.test(l.reason)), JSON.stringify(s.locked));
+	const edit = s.project.scenes[0];
+	const withX = [edit.tracks.main, ...edit.tracks.overlay].filter((t: { transitions?: unknown[] }) => t.transitions?.length);
+	assert.equal(withX.length, 1);
+	const [x] = withX[0].transitions;
+	assert.equal(x.kind, "cross-dissolve");
+	assert.deepEqual([x.before, x.after], [TICKS / 6, TICKS / 6], "Film's 4 frames at 24 fps either side of the cut");
+	assert.equal(x.fromId, withX[0].elements[0].id);
+	assert.equal(x.toId, withX[0].elements[1].id);
 	assert.ok(s.media.length >= 2 && s.media.every((m) => /^[0-9a-z]{26}$/.test(m.file.id)));
 	assert.deepEqual(s.save(load(s), s.media), film);
 });

@@ -1,4 +1,5 @@
 import type { SceneTracks, TimelineTrack } from "@/timeline";
+import { dipLayers, handleRoom, transitionShares } from "@/timeline/transitions";
 import type { MediaAsset } from "@/media/types";
 import { RootNode } from "./nodes/root-node";
 import { VideoNode } from "./nodes/video-node";
@@ -40,8 +41,21 @@ function buildTrackNodes({
 
 	for (const track of tracks) {
 		const elements = getVisibleSortedElements({ track });
+		// OneOS (files/989, "Simple ones only"): each picture a transition touches plays into its handles at Film's weights, and a dip's
+		// colour lies over the whole frame beneath the track's pictures for its window.
+		const shares = transitionShares(track);
+		const dips = dipLayers(track);
+		const shareOf = (element: TimelineTrack["elements"][number]) => {
+			const share = shares.get(element.id);
+			if (!share || (element.type !== "video" && element.type !== "image")) return undefined;
+			const room = handleRoom(element);
+			return { head: Math.min(share.head, room.head), tail: Math.min(share.tail, room.tail), at: share.at };
+		};
 
 		for (const element of elements) {
+			for (const dip of dips) {
+				if (dip.beneath === element.id) nodes.push(new ColorNode({ color: dip.color, window: { start: dip.start, end: dip.end } }));
+			}
 			if (element.type === "effect") {
 				nodes.push(
 					new EffectLayerNode({
@@ -77,6 +91,7 @@ function buildTrackNodes({
 							blendMode: element.blendMode,
 							effects: element.effects ?? [],
 							masks: element.masks ?? [],
+							share: shareOf(element),
 						}),
 					);
 				}
@@ -94,6 +109,7 @@ function buildTrackNodes({
 							blendMode: element.blendMode,
 							effects: element.effects ?? [],
 							masks: element.masks ?? [],
+							share: shareOf(element),
 							...(isPreview && {
 								maxSourceSize: PREVIEW_MAX_IMAGE_SIZE,
 							}),

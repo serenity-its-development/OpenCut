@@ -25,10 +25,12 @@ import { carry, foreignOf, type Foreign } from "./foreign.ts";
 import { FILM_OWNED, type Frame, filmEffects, filmLook, writeFilmLook } from "./film-look.ts";
 import { PER_CUT_TICK } from "./keys.ts";
 import { CaptionRefusal, isCaptionTrack, readCaptionTrack, writeCaptionTrack } from "./captions.ts";
+import { transitionChild } from "./transitions.ts";
+import { TRANSITION_NAME, transitionWindow, transitionsOf, type TrackTransition } from "../timeline/transitions.ts";
 
 type J = Record<string, any>;
 
-export type CutSaveCode = "caption-look-not-in-film" | "caption-overlap" | "sound-not-in-film" | "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
+export type CutSaveCode = "transition-not-carried" | "caption-look-not-in-film" | "caption-overlap" | "sound-not-in-film" | "keyframes-not-in-film" | "mask-not-in-film" | "mask-size-unknown" | "media-not-referenced" | "library-sound-off" | "scene-not-carried" | "element-not-carried" | "overlap-not-carried" | "format-not-round-trip" | "file-unreadable";
 
 export class CutSaveRefusal extends Error {
 	readonly code: CutSaveCode;
@@ -110,7 +112,7 @@ export class CutSession {
 	private readonly sceneAt = new Map<string, number>();
 	/** In a Cut project: what it holds that Cut does not own (another tool's keys, at any level), put back on every save. */
 	private foreign: Foreign = new Map();
-	private base: { project: string; media: string; tracks: Map<string, string[]>; names: Map<string, string>; switches: Map<string, string>; bookmarks: Map<string, string>; settings: string } | null = null;
+	private base: { project: string; media: string; tracks: Map<string, string[]>; names: Map<string, string>; switches: Map<string, string>; bookmarks: Map<string, string>; transitions: Map<string, string>; settings: string } | null = null;
 
 	private constructor(mode: "cut" | "carried", bytes: Uint8Array, raw: J, doc: OtioDocument | null, project: J, media: CutMedia[], locked: LockedTrack[]) {
 		this.mode = mode;
@@ -181,14 +183,34 @@ export class CutSession {
 				const muted = filmSwitch(t.raw) ?? own.muted === true;
 				const type: string = TRACK_TYPES.has(own.type) ? own.type : audio ? "audio" : "video";
 				const elements: J[] = [];
+				// Film's simple transitions (files/989, Mona 2026-11-10: "Simple ones only"), each between the item before it and the one after
+				// it (a clip there is its side; a gap or the track's edge none), its child kept as the file holds it.
+				const transitions: TrackTransition[] = [];
 				const lanes = t.lanes ?? [t.items];
 				lanes.forEach((lane, li) => {
 					let at = 0;
+					let prev: string | null = null;
+					let waiting: TrackTransition[] = [];
 					lane.forEach((it, ii) => {
+						if (it.type === "transition") {
+							const x: TrackTransition = { id: `${trackId}-x${ii}`, kind: it.kind, fromId: prev, toId: null, before: it.before, after: it.after };
+							transitions.push(x);
+							waiting.push(x);
+							clips.set(x.id, clone(it.raw));
+							return;
+						}
 						const start = toTicks(it.source.start, it.source.rate) as number;
 						const dur = toTicks(it.source.duration, it.source.rate) as number;
-						if (it.type === "gap") { at += dur; return; }
+						if (it.type === "gap") {
+							at += dur;
+							prev = null;
+							waiting = [];
+							return;
+						}
 						const id = t.lanes ? `${trackId}-l${li}-i${ii}` : `${trackId}-i${ii}`;
+						for (const w of waiting) w.toId = id;
+						waiting = [];
+						prev = id;
 						const look = isObj(it.metadata.opencut?.element) ? clone(it.metadata.opencut.element) : {};
 						clips.set(id, clone(it.raw));
 						if (it.type === "generator") {
@@ -236,12 +258,24 @@ export class CutSession {
 						at += dur;
 					});
 				});
-				origins.set(trackId, { ki, rate: lanes.flat()[0]?.source.rate ?? 30, frame });
-				const cutTrack = type === "audio"
+				const placed = lanes.flat().find((it) => it.type !== "transition");
+				const cutTrack: J = type === "audio"
 					? { id: trackId, name: t.name, type, muted, elements }
 					: type === "video"
 						? { id: trackId, name: t.name, type, muted, hidden: own.hidden === true, elements }
 						: { id: trackId, name: t.name, type, hidden: own.hidden === true, elements };
+				if (transitions.length) {
+					// Each must be where Cut can hold it, else the track stays locked, named (an edit would otherwise drop it).
+					cutTrack.transitions = transitions;
+					const why = transitions.map((x, n) => {
+						const w = transitionWindow(cutTrack as never, x);
+						if (typeof w === "string") return `Film's ${TRANSITION_NAME[x.kind]} ${w}`;
+						const overlaps = transitions.slice(0, n).some((y) => { const v = transitionWindow(cutTrack as never, y); return typeof v !== "string" && v.start < w.end && w.start < v.end; });
+						return overlaps ? `Film's ${TRANSITION_NAME[x.kind]} overlaps another transition on the same clip` : null;
+					}).find(Boolean);
+					if (why) { locked.push({ scene: tl.name, track: t.name, reason: `it holds ${why}, which Cut carries untouched and does not edit` }); return; }
+				}
+				origins.set(trackId, { ki, rate: (placed as { source?: { rate: number } } | undefined)?.source?.rate ?? 30, frame });
 				if (type === "audio") tracks.audio.push(cutTrack);
 				else if (type === "video" && !tracks.main) tracks.main = cutTrack;
 				else tracks.overlay.push(cutTrack);
@@ -265,16 +299,17 @@ export class CutSession {
 	/** The project and media as the editor holds them once loaded (its defaults filled in): an unedited save is measured against this. */
 	baseline(project: J, media: CutMedia[]): void {
 		const p = clone(project);
-		const tracks = new Map<string, string[]>(), names = new Map<string, string>(), switches = new Map<string, string>(), bookmarks = new Map<string, string>();
+		const tracks = new Map<string, string[]>(), names = new Map<string, string>(), switches = new Map<string, string>(), bookmarks = new Map<string, string>(), transitions = new Map<string, string>();
 		for (const sc of p.scenes as J[]) {
 			bookmarks.set(sc.id, json(sc.bookmarks ?? []));
 			for (const t of allTracks(sc)) {
 				tracks.set(t.id, (t.elements as J[]).map(json));
 				names.set(t.id, t.name);
 				switches.set(t.id, json(switchesOf(t)));
+				transitions.set(t.id, json(transitionsOf(t as never)));
 			}
 		}
-		this.base = { project: json(steady(p)), media: json(media), tracks, names, switches, bookmarks, settings: json(p.settings ?? null) };
+		this.base = { project: json(steady(p)), media: json(media), tracks, names, switches, bookmarks, transitions, settings: json(p.settings ?? null) };
 	}
 
 	/** Does the project hold an edit since it was opened (or last saved)? Before `baseline` it is counted as edited. */
@@ -370,7 +405,7 @@ export class CutSession {
 			for (const t of allTracks(sc)) {
 				const origin = this.origins.get(t.id);
 				const was = base?.tracks.get(t.id);
-				const elementsSame = was !== undefined && json((t.elements as J[]).map(json)) === json(was);
+				const elementsSame = was !== undefined && json((t.elements as J[]).map(json)) === json(was) && base?.transitions.get(t.id) === json(transitionsOf(t as never));
 				if (t.type === "caption") {
 					const canvas = canvasOf(origin?.frame ?? null, this.raw, p);
 					const body = this.captionBody(t, origin ? (kept[origin.ki] as J) : null, origin?.rate ?? TICKS, canvas, clips);
@@ -455,6 +490,12 @@ export class CutSession {
 			else lanes.push([e]);
 		}
 		if (!lanes.length) lanes.push([]);
+		const xs = transitionsOf(t as never);
+		for (const x of xs) {
+			const w = transitionWindow(t as never, x);
+			if (typeof w === "string") throw new CutSaveRefusal("transition-not-carried", `the ${TRANSITION_NAME[x.kind]} on the track "${t.name}": ${w}`);
+		}
+		if (xs.length && lanes.length > 1) throw new CutSaveRefusal("transition-not-carried", `the track "${t.name}" holds a transition and elements that overlap, which an OpenTimelineIO track (a sequence) cannot hold together`);
 		const wasLanes: J[][] = !before ? [] : before.OTIO_SCHEMA === "Stack.1" ? (before.children as J[]).map((l) => l.children as J[]) : [before.children as J[]];
 		const baseEls = new Map((this.base?.tracks.get(t.id) ?? []).map((x) => { const e = JSON.parse(x); return [e.id as string, x]; }));
 		const filmTrack = !!before && !isObj(before.metadata?.opencut?.track);
@@ -462,6 +503,7 @@ export class CutSession {
 			const gaps: Array<{ at: number; dur: number; raw: J }> = [];
 			let at = 0;
 			for (const c of was) {
+				if (c.OTIO_SCHEMA === "Transition.1") continue;
 				const dur = toTicks(c.source_range.duration.value, c.source_range.duration.rate) ?? 0;
 				if (c.OTIO_SCHEMA === "Gap.1") gaps.push({ at, dur, raw: c });
 				at += dur;
@@ -494,11 +536,21 @@ export class CutSession {
 				// A clip Cut adds to one of Film's tracks carries its speed and reverse as OTIO's time warp, which Film reads (files/989, 2c).
 				if (!prior && filmTrack && isObj(e.retime) && (e.retime.rate !== 1 || e.retime.reverse === true)) c.effects = timeWarpEffects({ rate: e.retime.rate, reverse: e.retime.reverse === true });
 				clips.set(e.id, c);
+				placedAt.set(e.id, out.length);
 				out.push(c);
 				at = e.startTime + e.duration;
 			}
+			// The track's transitions (files/989, "Simple ones only") in Film's shape, each beside its sides: after the clip ending at its cut,
+			// else before the clip starting there.
+			const inserts = xs.map((x) => ({ at: x.fromId !== null ? (placedAt.get(x.fromId) as number) + 1 : (placedAt.get(x.toId as string) as number), x }));
+			for (const { at: i, x } of inserts.sort((a, b) => b.at - a.at)) {
+				const child = transitionChild(x, rate, this.clipOf.get(x.id) ?? null);
+				clips.set(x.id, child);
+				out.splice(i, 0, child);
+			}
 			return out;
 		};
+		const placedAt = new Map<string, number>();
 		const kind = t.type === "audio" ? "Audio" : "Video";
 		const plain = (children: J[], metadata: J): J => ({ OTIO_SCHEMA: "Track.1", name: t.name, kind, source_range: null, effects: [], markers: [], enabled: true, metadata, children });
 		if (lanes.length === 1) {
@@ -736,6 +788,7 @@ function carriedLock(t: J): string | null {
 	const lanes: J[] = t.OTIO_SCHEMA === "Stack.1" ? t.children : [t];
 	for (const l of lanes) if (l.enabled === false || (l.source_range !== null && l.source_range !== undefined)) return "a lane of it is switched off or trimmed, which Cut does not show";
 	for (const c of lanes.flatMap((l) => l.children as J[])) {
+		if (c.OTIO_SCHEMA === "Transition.1") continue;
 		const r = c.source_range;
 		if (toTicks(r.start_time.value, r.start_time.rate) === null || toTicks(r.duration.value, r.duration.rate) === null) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" has times that are not whole ticks of Cut's clock (${TICKS}/s)`;
 		if (c.enabled === false) return `${c.OTIO_SCHEMA} "${c.name ?? ""}" is switched off, which Cut has no switch for`;

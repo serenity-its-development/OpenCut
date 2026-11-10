@@ -39,6 +39,7 @@ import { ImageNode, loadImageSource } from "./nodes/image-node";
 import { StickerNode, loadStickerSource } from "./nodes/sticker-node";
 import { TextNode, type ResolvedTextNodeState } from "./nodes/text-node";
 import { VideoNode } from "./nodes/video-node";
+import { ColorNode } from "./nodes/color-node";
 import type {
 	ResolvedVisualNodeState,
 	ResolvedVisualSourceNodeState,
@@ -89,6 +90,9 @@ async function resolveNode({
 		node.resolved = await resolveBlurBackgroundNode({ node, context });
 	} else if (node instanceof EffectLayerNode) {
 		node.resolved = resolveEffectLayerNode({ node, context });
+	} else if (node instanceof ColorNode) {
+		const w = node.params.window;
+		node.resolved = !w || (context.time >= w.start && context.time < w.end) ? { drawn: true } : null;
 	}
 
 	await Promise.all(
@@ -140,7 +144,12 @@ function resolveVisualState({
 	sourceHeight: number;
 }): ResolvedVisualNodeState | null {
 	const clipTime = context.time - params.timeOffset;
-	if (clipTime < 0 || clipTime >= params.duration) {
+	if (!withinReach({ params, clipTime })) {
+		return null;
+	}
+	// OneOS (files/989, "Simple ones only"): a transition's weight at this time, Film's, on the picture's own opacity.
+	const weight = params.share ? params.share.at(context.time) : 1;
+	if (weight === null) {
 		return null;
 	}
 
@@ -154,11 +163,12 @@ function resolveVisualState({
 		animations: params.animations,
 		localTime,
 	});
-	const opacity = resolveOpacityAtTime({
-		baseOpacity: params.opacity,
-		animations: params.animations,
-		localTime,
-	});
+	const opacity =
+		resolveOpacityAtTime({
+			baseOpacity: params.opacity,
+			animations: params.animations,
+			localTime,
+		}) * weight;
 	const containScale = Math.min(
 		context.renderer.width / sourceWidth,
 		context.renderer.height / sourceHeight,
@@ -185,6 +195,15 @@ function resolveVisualState({
 }
 
 /**
+ * Is `clipTime` (ticks from the element's start) where the element is drawn: its own span, and, in a transition (files/989, "Simple ones
+ * only"), its handles before and after it.
+ */
+function withinReach({ params, clipTime }: { params: VisualNodeParams; clipTime: number }): boolean {
+	const head = params.share?.head ?? 0, tail = params.share?.tail ?? 0;
+	return clipTime >= -head && clipTime < params.duration + tail;
+}
+
+/**
  * The source time a clip shows at `clipTime` (ticks). A reversed clip (files/989, 2c) shows its span backwards, a tick before the mirrored
  * moment so its first frame is the span's last, never the frame past it (Film reads it the same way, a tick inside its span).
  */
@@ -201,7 +220,7 @@ async function resolveVideoNode({
 	context: ResolveContext;
 }): Promise<ResolvedVisualSourceNodeState | null> {
 	const clipTime = context.time - node.params.timeOffset;
-	if (clipTime < 0 || clipTime >= node.params.duration) {
+	if (!withinReach({ params: node.params, clipTime })) {
 		return null;
 	}
 

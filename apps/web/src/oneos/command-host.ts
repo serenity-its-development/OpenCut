@@ -8,7 +8,7 @@ import { invokeAction } from "@/actions";
 import type { TActionWithOptionalArgs } from "@/actions";
 import type { Command } from "@/commands";
 import {
-	AddClipEffectCommand, AddTrackCommand, CreateSceneCommand, DeleteCustomMaskPointsCommand, DeleteElementsCommand, DeleteSceneCommand,
+	AddClipEffectCommand, AddTrackCommand, AddTransitionCommand, RemoveTransitionCommand, UpdateTransitionCommand, CreateSceneCommand, DeleteCustomMaskPointsCommand, DeleteElementsCommand, DeleteSceneCommand,
 	DuplicateElementsCommand, InsertElementCommand, MoveBookmarkCommand, RemoveBookmarkCommand, RemoveClipEffectCommand,
 	RemoveEffectParamKeyframeCommand, RemoveKeyframeCommand, RemoveMaskCommand, RemoveMediaAssetCommand, RemoveTrackCommand, RenameSceneCommand,
 	ReorderClipEffectsCommand, RetimeKeyframeCommand, SplitElementsCommand, ToggleBookmarkCommand, ToggleClipEffectCommand,
@@ -45,6 +45,9 @@ const MAKE: Record<string, (a: A) => Command> = {
 	"track.remove": (a) => new RemoveTrackCommand(a.trackId),
 	"track.toggleMute": (a) => new ToggleTrackMuteCommand(a.trackId),
 	"track.toggleVisibility": (a) => new ToggleTrackVisibilityCommand(a.trackId),
+	"transition.add": (a) => new AddTransitionCommand({ trackId: a.trackId, fromId: a.fromId ?? null, toId: a.toId ?? null, kind: a.kind, duration: a.duration }),
+	"transition.update": (a) => new UpdateTransitionCommand({ trackId: a.trackId, transitionId: a.transitionId, kind: a.kind, duration: a.duration }),
+	"transition.remove": (a) => new RemoveTransitionCommand({ trackId: a.trackId, transitionId: a.transitionId }),
 	"scene.create": (a) => new CreateSceneCommand(a.name, a.isMain ?? false),
 	"scene.delete": (a) => new DeleteSceneCommand(a.sceneId),
 	"scene.rename": (a) => new RenameSceneCommand(a.sceneId, a.newName),

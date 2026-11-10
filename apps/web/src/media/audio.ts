@@ -20,6 +20,7 @@ import { mediaSupportsAudio } from "@/media/media-utils";
 import { getSourceTimeAtClipTime, isReversed, renderRetimedBuffer } from "@/retime";
 import { Input, ALL_FORMATS, BlobSource, AudioBufferSink } from "mediabunny";
 import { TICKS_PER_SECOND } from "@/wasm";
+import { handleRoom, transitionShares, type TransitionShare } from "@/timeline/transitions";
 import {
 	computeRmsBuckets,
 	type SampleBucket,
@@ -38,6 +39,55 @@ export interface CollectedAudioElement {
 	volume: number;
 	muted: boolean;
 	retime?: RetimeConfig;
+	fade?: TransitionFade;
+}
+
+/**
+ * OneOS (files/989, "Simple ones only"): a sound in an audio crossfade, lengthened into its handles (its `startTime`, `duration` and trims
+ * already say so). `offset` is how far (seconds) it starts before the element itself, so the element's own volume keys stay at their moment;
+ * `gainAt` is Film's crossfade gain at a time of the lengthened clip (seconds from its start); `key` names the fade for a cache.
+ */
+export interface TransitionFade {
+	offset: number;
+	gainAt: (clipTime: number) => number;
+	key: string;
+}
+
+/** Every sound of the audio tracks that a crossfade touches, with its share. */
+export function audioTransitionShares({ tracks }: { tracks: SceneTracks }): Map<string, TransitionShare> {
+	const out = new Map<string, TransitionShare>();
+	for (const track of tracks.audio) for (const [id, share] of transitionShares(track)) out.set(id, share);
+	return out;
+}
+
+/**
+ * A sound's timing (seconds) lengthened into its handles for its crossfades, as Film's `with_handles` lengthens it: the medium's timing is
+ * unchanged, so the part before its start (after its end) plays the source before (after) its trim, only as far as the medium reaches.
+ */
+export function withTransitionFade<T extends { startTime: number; duration: number; trimStart: number; trimEnd: number; retime?: RetimeConfig }>(
+	clip: T,
+	element: AudioCapableElement,
+	shares: Map<string, TransitionShare>,
+): T & { fade?: TransitionFade } {
+	const share = shares.get(element.id);
+	if (!share) return clip;
+	const room = handleRoom({ type: element.type, trimStart: element.trimStart, trimEnd: element.trimEnd, retime: element.retime });
+	const head = Math.min(share.head, room.head), tail = Math.min(share.tail, room.tail);
+	const rate = element.retime?.rate && element.retime.rate > 0 ? element.retime.rate : 1;
+	const reverse = isReversed({ retime: element.retime });
+	const startTicks = element.startTime - head;
+	return {
+		...clip,
+		startTime: startTicks / TICKS_PER_SECOND,
+		duration: (element.duration + head + tail) / TICKS_PER_SECOND,
+		trimStart: (element.trimStart - (reverse ? tail : head) * rate) / TICKS_PER_SECOND,
+		trimEnd: (element.trimEnd - (reverse ? head : tail) * rate) / TICKS_PER_SECOND,
+		fade: {
+			offset: head / TICKS_PER_SECOND,
+			gainAt: (clipTime) => share.at(startTicks + clipTime * TICKS_PER_SECOND) ?? 0,
+			key: JSON.stringify({ head, tail, at: [0, 0.25, 0.5, 0.75, 1].map((f) => share.at(startTicks + f * (element.duration + head + tail))) }),
+		},
+	};
 }
 
 export function createAudioContext({
@@ -146,6 +196,7 @@ export async function collectAudioElements({
 		mediaAssets.map((media) => [media.id, media]),
 	);
 	const pendingElements: Array<Promise<CollectedAudioElement | null>> = [];
+	const shares = audioTransitionShares({ tracks });
 
 	for (const { element, mediaAsset } of candidates) {
 		if (element.type === "audio") {
@@ -156,7 +207,7 @@ export async function collectAudioElements({
 					audioContext,
 				}).then((audioBuffer) => {
 					if (!audioBuffer) return null;
-					return {
+					return withTransitionFade({
 						timelineElement: element,
 						buffer: audioBuffer,
 						startTime: element.startTime / TICKS_PER_SECOND,
@@ -170,7 +221,7 @@ export async function collectAudioElements({
 						}),
 						muted: element.muted === true,
 						retime: element.retime,
-					};
+					}, element, shares);
 				}),
 			);
 			continue;
@@ -185,7 +236,7 @@ export async function collectAudioElements({
 					audioContext,
 				}).then((audioBuffer) => {
 					if (!audioBuffer) return null;
-					return {
+					return withTransitionFade({
 						timelineElement: element,
 						buffer: audioBuffer,
 						startTime: element.startTime / TICKS_PER_SECOND,
@@ -199,7 +250,7 @@ export async function collectAudioElements({
 						}),
 						muted: element.muted ?? false,
 						retime: element.retime,
-					};
+					}, element, shares);
 				}),
 			);
 		}
@@ -360,6 +411,7 @@ export interface AudioClipSource {
 	volume: number;
 	muted: boolean;
 	retime?: RetimeConfig;
+	fade?: TransitionFade;
 }
 
 async function fetchLibraryAudioSource({
@@ -461,13 +513,15 @@ function collectMediaAudioClip({
 	mediaAsset,
 	muted,
 	volume,
+	shares,
 }: {
 	element: AudioCapableElement;
 	mediaAsset: MediaAsset;
 	muted: boolean;
 	volume: number;
+	shares: Map<string, TransitionShare>;
 }): AudioClipSource {
-	return {
+	return withTransitionFade({
 		timelineElement: element,
 		id: element.id,
 		sourceKey: mediaAsset.id,
@@ -479,7 +533,7 @@ function collectMediaAudioClip({
 		volume,
 		muted,
 		retime: element.retime,
-	};
+	}, element, shares);
 }
 
 export async function collectAudioMixSources({
@@ -558,6 +612,7 @@ export async function collectAudioClips({
 		mediaAssets.map((asset) => [asset.id, asset]),
 	);
 	const pendingLibraryClips: Array<Promise<AudioClipSource | null>> = [];
+	const shares = audioTransitionShares({ tracks });
 
 	for (const track of orderedTracks) {
 		const isTrackMuted = canTrackHaveAudio(track) && track.muted;
@@ -590,6 +645,7 @@ export async function collectAudioClips({
 							mediaAsset,
 							muted,
 							volume,
+							shares,
 						}),
 					);
 				} else {
@@ -608,6 +664,7 @@ export async function collectAudioClips({
 							mediaAsset,
 							muted,
 							volume,
+							shares,
 						}),
 					);
 				}
@@ -854,12 +911,13 @@ function mixAudioChannels({
 			const lowerIndex = Math.floor(sourceIndex);
 			const upperIndex = Math.min(sourceData.length - 1, lowerIndex + 1);
 			const fraction = sourceIndex - lowerIndex;
-			const gain = hasAnimatedVolume({ element: element.timelineElement })
+			// A sound in a crossfade (files/989) starts `offset` before its element: its volume keys stay at their moment; Film's gain on it.
+			const gain = (hasAnimatedVolume({ element: element.timelineElement })
 				? resolveEffectiveAudioGain({
 						element: element.timelineElement,
-						localTime: clipTime,
+						localTime: clipTime - (element.fade?.offset ?? 0),
 					})
-				: element.volume;
+				: element.volume) * (element.fade ? element.fade.gainAt(clipTime) : 1);
 			outputData[outputIndex] +=
 				(sourceData[lowerIndex] * (1 - fraction) +
 					sourceData[upperIndex] * fraction) *

@@ -461,6 +461,8 @@ export class AudioManager {
 		clip: AudioClipSource;
 	}): boolean {
 		return (
+			// A sound in a crossfade (files/989, "Simple ones only") is prepared whole with Film's gains on it.
+			clip.fade !== undefined ||
 			this.hasCurveRetime({ clip }) ||
 			// A reversed clip (files/989, 2c) plays its span backwards, which a forward stream of the medium cannot: it is prepared whole.
 			isReversed({ retime: clip.retime }) ||
@@ -497,11 +499,13 @@ export class AudioManager {
 			return;
 		}
 
+		// A sound in a crossfade starts `offset` before its element (files/989): its volume keys are at the element's own moments.
+		const offset = clip.fade?.offset ?? 0;
 		const points = buildAudioGainAutomation({
 			element: clip.timelineElement,
-			fromLocalTime: startLocalTime,
-			toLocalTime: clip.duration,
-		});
+			fromLocalTime: Math.max(0, startLocalTime - offset),
+			toLocalTime: clip.duration - offset,
+		}).map((point) => ({ ...point, localTime: point.localTime + offset }));
 
 		if (points.length === 0) {
 			return;
@@ -533,6 +537,7 @@ export class AudioManager {
 			trimStart: clip.trimStart,
 			trimEnd: clip.trimEnd,
 			retime: clip.retime ?? null,
+			fade: clip.fade?.key ?? null,
 		});
 	}
 
@@ -558,7 +563,7 @@ export class AudioManager {
 				return null;
 			}
 
-			return await renderRetimedBuffer({
+			const rendered = await renderRetimedBuffer({
 				audioContext,
 				sourceBuffer: decodedBuffer,
 				trimStart: clip.trimStart,
@@ -566,6 +571,15 @@ export class AudioManager {
 				retime: clip.retime,
 				maintainPitch: clip.retime?.maintainPitch === true,
 			});
+			// Film's crossfade gains, sample by sample, as the export mixes them (files/989, "Simple ones only").
+			const fade = clip.fade;
+			if (fade) {
+				for (let c = 0; c < rendered.numberOfChannels; c++) {
+					const data = rendered.getChannelData(c);
+					for (let i = 0; i < data.length; i++) data[i] *= fade.gainAt(i / rendered.sampleRate);
+				}
+			}
+			return rendered;
 		})();
 
 		this.preparedClipBuffers.set(cacheKey, promise);

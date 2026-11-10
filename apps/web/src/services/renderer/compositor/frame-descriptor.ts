@@ -103,6 +103,8 @@ async function collectNode({
 	}
 
 	if (node instanceof ColorNode) {
+		// OneOS (files/989): a dip's colour is drawn only inside its window.
+		if (!node.resolved) return;
 		const textureId = `${path}:color`;
 		const { width, height } = renderer;
 		textures.set(textureId, {

@@ -18,14 +18,14 @@ function classes(dir: string): string[] {
 
 test("every command class of the editor has exactly one id; each id is allowed or left out with a reason", () => {
 	const found = classes(SRC).sort();
-	assert.equal(found.length, 40, "the editor's command classes, measured");
+	assert.equal(found.length, 43, "the editor's command classes, measured (40, and the three transition commands of files/989)");
 	assert.deepEqual(Object.values(CUT_COMMAND_IDS).sort(), found, "one id per class");
 	const ids = Object.keys(CUT_COMMAND_IDS);
 	const left = CUT_LEFT_OUT.flatMap((g) => g.ids);
 	assert.deepEqual([...CUT_RUN_COMMANDS, ...left].sort(), [...ids].sort(), "allowed + left out = every id");
 	assert.equal(new Set([...CUT_RUN_COMMANDS, ...left]).size, ids.length, "none named twice");
 	for (const g of CUT_LEFT_OUT) assert.ok(g.reason.length > 20, g.reason);
-	assert.equal(CUT_RUN_COMMANDS.length, 33);
+	assert.equal(CUT_RUN_COMMANDS.length, 36);
 	for (const id of ["media.add", "clipboard.paste", "batch"]) assert.ok(!CUT_RUN_COMMANDS.includes(id));
 });
 

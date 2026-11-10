@@ -1,5 +1,5 @@
 /**
- * Cut's command ids (OneOS doctrine files/025, files/999): the editor's 40 command classes, each named once. The assistant runs a step by
+ * Cut's command ids (OneOS doctrine files/025, files/999): the editor's 43 command classes (40, and files/989's three transition commands), each named once. The assistant runs a step by
  * this id through `craft:command` (`command-host.ts`); what it may not run is listed with its reason. Pure: the classes themselves are made
  * in `command-host.ts`.
  *
@@ -35,6 +35,9 @@ export const CUT_COMMAND_IDS = {
 	"track.remove": "RemoveTrackCommand",
 	"track.toggleMute": "ToggleTrackMuteCommand",
 	"track.toggleVisibility": "ToggleTrackVisibilityCommand",
+	"transition.add": "AddTransitionCommand",
+	"transition.update": "UpdateTransitionCommand",
+	"transition.remove": "RemoveTransitionCommand",
 	"scene.create": "CreateSceneCommand",
 	"scene.delete": "DeleteSceneCommand",
 	"scene.rename": "RenameSceneCommand",
@@ -92,6 +95,9 @@ const ARGS: Record<string, Record<string, Kind | `${Kind}?`>> = {
 	"track.remove": { trackId: "s" },
 	"track.toggleMute": { trackId: "s" },
 	"track.toggleVisibility": { trackId: "s" },
+	"transition.add": { trackId: "s", fromId: "s?", toId: "s?", kind: "s?", duration: "n?" },
+	"transition.update": { trackId: "s", transitionId: "s", kind: "s?", duration: "n?" },
+	"transition.remove": { trackId: "s", transitionId: "s" },
 	"scene.create": { name: "s", isMain: "b?" },
 	"scene.delete": { sceneId: "s" },
 	"scene.rename": { sceneId: "s", newName: "s" },
