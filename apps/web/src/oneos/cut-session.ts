@@ -725,6 +725,9 @@ function filmGain(c: J): number | null {
  */
 function filmCopy(c: J, offset: number): J {
 	const out = clone(c);
+	// The clip's own markers stay on the clip they came from (files/989, 2c clip markers): a copy carries none, as Film makes a clip it
+	// reads anew without them, so the original keeps every one.
+	out.markers = [];
 	const fc = out.metadata.filmcraft;
 	for (const e of Array.isArray(fc.effects) ? fc.effects : []) {
 		for (const p of Object.values(isObj(e.params) ? e.params : {}) as J[]) {

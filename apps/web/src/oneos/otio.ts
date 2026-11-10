@@ -5,7 +5,7 @@
  *
  * Editable: a Track.1 (Video or Audio) whose children are all plain `Clip.2` and `Gap.1`; a clip's one DEFAULT_MEDIA is an `ExternalReference.1`
  * that is a OneOS file (`oneos:file/<id>?version=<v>`), or Cut's OWN generator (`GeneratorReference.1` of kind `OpenCut.<text|sticker|graphic|
- * effect>` whose clip carries `metadata.opencut.element`); no effects, no markers. Cut's own stacked lanes (a `Stack.1` with
+ * effect>` whose clip carries `metadata.opencut.element`); no effects but a speed; a clip's own markers are carried untouched on it. Cut's own stacked lanes (a `Stack.1` with
  * `metadata.opencut.track` of `Track.1` lanes each marked `metadata.opencut.lane`) are one editable track. Anything else on a track - a
  * transition other than Film's simple ones (files/989, "Simple ones only"), an effect, a marker, another tool's stack or generator, media that is not a OneOS file - LOCKS that track (shown, not editable,
  * written back exactly), with the reason named.
@@ -210,7 +210,12 @@ function editable(c: unknown): string | null {
 	const multicam = filmMulticam(c);
 	if (multicam) return multicam;
 	if (c.OTIO_SCHEMA !== "Clip.2" && c.OTIO_SCHEMA !== "Gap.1") return `it holds a ${label}, which Cut carries but does not edit`;
-	if (Array.isArray(c.markers) && c.markers.length) return `${label} has effects or markers`;
+	// A clip's own markers (files/989, 2c clip markers; the rule of thumb) Cut carries untouched on the clip, which stays editable; Cut has no
+	// clip-marker type of its own. A gap's markers, or anything in a clip's markers that is not a marker, still locks the track.
+	if (Array.isArray(c.markers) && c.markers.length) {
+		if (c.OTIO_SCHEMA !== "Clip.2") return `${label} has markers of its own, which Cut carries but does not edit`;
+		if (!c.markers.every((m: unknown) => isObj(m) && (m.OTIO_SCHEMA === "Marker.2" || m.OTIO_SCHEMA === "Marker.1") && isObj(m.marked_range) && isObj(m.marked_range.start_time) && typeof m.marked_range.start_time.value === "number" && typeof m.marked_range.start_time.rate === "number" && m.marked_range.start_time.rate > 0)) return `${label} holds markers Cut cannot read`;
+	}
 	// A clip's speed and reverse (files/989, 2c) Cut edits; any other effect locks the track, named.
 	const warp = c.OTIO_SCHEMA === "Clip.2" ? readTimeWarp(c) : Array.isArray(c.effects) && c.effects.length ? `${label} has effects or markers` : null;
 	if (typeof warp === "string") return warp;

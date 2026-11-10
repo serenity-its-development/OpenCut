@@ -67,7 +67,10 @@ test("what Cut cannot edit is locked with its reason, never refused or dropped: 
 	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(2, { metadata: { other: 1 } })] })])!, /effects Cut does not show/);
 	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [warp(2), warp(2)] })])!, /effects Cut does not show/);
 	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { effects: [{ OTIO_SCHEMA: "Effect.1", name: "", effect_name: "Blur", metadata: {} }] })])!, /effects Cut does not show/);
-	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { markers: [{ OTIO_SCHEMA: "Marker.2" }] })])!, /effects or markers/);
+	// A clip's own markers are carried on it, the track editable (files/989, 2c clip markers); markers Cut cannot read, or a gap's, lock it.
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1"), { markers: [{ OTIO_SCHEMA: "Marker.2" }] })])!, /holds markers Cut cannot read/);
+	assert.equal(lockOf([clip("beach", mediaUrl(FILE, "v1"), { markers: [{ OTIO_SCHEMA: "Marker.2", name: "m", marked_range: range(10, 0), color: "RED", comment: "", metadata: {} }] })]), null);
+	assert.match(lockOf([clip("beach", mediaUrl(FILE, "v1")), { OTIO_SCHEMA: "Gap.1", name: "", source_range: range(0, 15), effects: [], markers: [{ OTIO_SCHEMA: "Marker.2" }], enabled: true, metadata: {} }])!, /Gap\.1 has markers of its own/);
 	assert.match(lockOf([clip("beach", "file:///Users/me/beach.mov")])!, /not a OneOS file/);
 	const nested = timeline([]);
 	nested.tracks.children = [{ OTIO_SCHEMA: "Stack.1", name: "nested", children: [] }] as any;
