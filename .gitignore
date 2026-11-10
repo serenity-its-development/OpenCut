@@ -24,3 +24,5 @@ bun.lockb
 target/
 
 .cargo-tools/
+# OneOS (files/989): the shared sticker set's bytes, copied from OneOS by workspace/scripts/craft-stickers.mjs --to-cut; OneOS stores them
+/apps/web/public/stickers/oneos/

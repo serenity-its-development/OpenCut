@@ -7,6 +7,7 @@ import { stickersRegistry } from "./registry";
 import { resolveStickerId } from "./resolver";
 import { registerDefaultStickerProviders } from "./providers";
 import { parseStickerId } from "./sticker-id";
+import { ONEOS_PROVIDER_ID, ONEOS_STICKER_SIZE } from "./providers/oneos";
 import type {
 	StickerBrowseResult,
 	StickerItem,
@@ -15,6 +16,11 @@ import type {
 } from "./types";
 
 const DEFAULT_BROWSE_LIMIT = 12;
+
+/** The providers the picker offers: those `STICKER_CATEGORIES` names (OneOS: the shared set and Shapes). Every provider still resolves. */
+function pickerProviders(): StickerProvider[] {
+	return stickersRegistry.getAll().filter((provider) => provider.id in STICKER_CATEGORIES);
+}
 const DEFAULT_SEARCH_LIMIT = 100;
 
 function mergeSearchResults({
@@ -128,7 +134,7 @@ export async function searchStickers({
 		});
 	}
 
-	const providers = stickersRegistry.getAll();
+	const providers = pickerProviders();
 	if (providers.length === 0) {
 		return {
 			items: [],
@@ -168,7 +174,7 @@ export async function searchAll({
 }): Promise<StickerBrowseResult> {
 	registerDefaultStickerProviders({});
 
-	const providers = stickersRegistry.getAll();
+	const providers = pickerProviders();
 	if (providers.length === 0) {
 		return { sections: [] };
 	}
@@ -251,7 +257,7 @@ export async function browseAll({
 	}
 
 	const settledResults = await Promise.allSettled(
-		stickersRegistry.getAll().map(async (provider) => {
+		pickerProviders().map(async (provider) => {
 			const browseResult = await provider.browse({
 				options: { limit },
 			});
@@ -290,6 +296,10 @@ export async function resolveStickerIntrinsicSize({
 }: {
 	stickerId: string;
 }): Promise<{ width: number; height: number }> {
+	// OneOS: every sticker of the shared set is square at the set's size (an SVG with only a viewBox has no natural size to read).
+	if (parseStickerId({ stickerId }).providerId === ONEOS_PROVIDER_ID) {
+		return { width: ONEOS_STICKER_SIZE, height: ONEOS_STICKER_SIZE };
+	}
 	const url = resolveStickerId({ stickerId });
 	return new Promise((resolve) => {
 		const img = new Image();
